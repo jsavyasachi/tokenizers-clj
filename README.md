@@ -10,6 +10,7 @@ HuggingFace `tokenizer.json`, backed by the native Rust `tokenizers` library.
 <a href="https://huggingface.co/docs/tokenizers"><img src="https://img.shields.io/badge/HuggingFace%20Tokenizers-FFD21E?style=flat&logo=huggingface&logoColor=000" alt="HuggingFace Tokenizers" /></a>
 
 [![Clojars Project](https://img.shields.io/clojars/v/net.clojars.savya/tokenizers-clj.svg)](https://clojars.org/net.clojars.savya/tokenizers-clj)
+[![cljdoc](https://cljdoc.org/badge/net.clojars.savya/tokenizers-clj)](https://cljdoc.org/d/net.clojars.savya/tokenizers-clj)
 
 A thin Clojure wrapper over [DJL](https://djl.ai/)'s
 `ai.djl.huggingface/tokenizers`, which binds the same fast Rust
