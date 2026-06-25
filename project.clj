@@ -4,7 +4,7 @@
   :license {:name "Eclipse Public License 1.0"
             :url "https://www.eclipse.org/legal/epl-v10.html"}
   :scm {:name "git" :url "https://github.com/jsavyasachi/tokenizers-clj"}
-  :dependencies [[ai.djl.huggingface/tokenizers "0.33.0"]]
+  :dependencies [[ai.djl.huggingface/tokenizers "0.36.0"]]
   :global-vars {*warn-on-reflection* true}
   :profiles {:provided {:dependencies [[org.clojure/clojure "1.12.0"]]}
              :dev {:dependencies [[org.clojure/clojure "1.12.0"]]
