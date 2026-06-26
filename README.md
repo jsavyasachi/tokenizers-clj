@@ -75,8 +75,9 @@ rectangular; real token counts are recoverable from each `:attention-mask`.
 
 ## License
 
-Copyright (c) 2026 Savyasachi. Released under the
-[Eclipse Public License 1.0](https://www.eclipse.org/legal/epl-v10.html).
+Copyright © 2026 Savyasachi
+
+Distributed under the [Eclipse Public License 1.0](https://www.eclipse.org/legal/epl-v10.html).
 
 Wraps [Deep Java Library](https://djl.ai/) (Apache-2.0) and the HuggingFace
 [`tokenizers`](https://github.com/huggingface/tokenizers) library (Apache-2.0).
