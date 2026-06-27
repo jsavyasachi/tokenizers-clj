@@ -25,13 +25,13 @@ runtime once the model file is local.
 Leiningen / Boot:
 
 ```clojure
-[net.clojars.savya/tokenizers-clj "0.1.0"]
+[net.clojars.savya/tokenizers-clj "0.1.1"]
 ```
 
 deps.edn:
 
 ```clojure
-net.clojars.savya/tokenizers-clj {:mvn/version "0.1.0"}
+net.clojars.savya/tokenizers-clj {:mvn/version "0.1.1"}
 ```
 
 ## Usage
