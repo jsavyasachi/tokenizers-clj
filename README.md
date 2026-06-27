@@ -1,5 +1,9 @@
 # tokenizers-clj
 
+[![Clojars Project](https://img.shields.io/clojars/v/net.clojars.savya/tokenizers-clj.svg)](https://clojars.org/net.clojars.savya/tokenizers-clj)
+[![cljdoc](https://cljdoc.org/badge/net.clojars.savya/tokenizers-clj)](https://cljdoc.org/d/net.clojars.savya/tokenizers-clj)
+[![test](https://github.com/jsavyasachi/tokenizers-clj/actions/workflows/test.yml/badge.svg)](https://github.com/jsavyasachi/tokenizers-clj/actions/workflows/test.yml)
+
 Idiomatic Clojure tokenization: encode, decode, and count tokens against any
 HuggingFace `tokenizer.json`, backed by the native Rust `tokenizers` library.
 
@@ -8,9 +12,6 @@ HuggingFace `tokenizer.json`, backed by the native Rust `tokenizers` library.
 <a href="https://clojure.org"><img src="https://img.shields.io/badge/Clojure-5881D8?style=flat&logo=clojure&logoColor=white" alt="Clojure" /></a>
 <a href="https://www.java.com"><img src="https://img.shields.io/badge/JVM-ED8B00?style=flat&logo=openjdk&logoColor=white" alt="JVM" /></a>
 <a href="https://huggingface.co/docs/tokenizers"><img src="https://img.shields.io/badge/HuggingFace%20Tokenizers-FFD21E?style=flat&logo=huggingface&logoColor=000" alt="HuggingFace Tokenizers" /></a>
-
-[![Clojars Project](https://img.shields.io/clojars/v/net.clojars.savya/tokenizers-clj.svg)](https://clojars.org/net.clojars.savya/tokenizers-clj)
-[![cljdoc](https://cljdoc.org/badge/net.clojars.savya/tokenizers-clj)](https://cljdoc.org/d/net.clojars.savya/tokenizers-clj)
 
 A thin Clojure wrapper over [DJL](https://djl.ai/)'s
 `ai.djl.huggingface/tokenizers`, which binds the same fast Rust
