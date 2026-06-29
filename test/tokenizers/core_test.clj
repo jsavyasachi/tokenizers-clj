@@ -43,3 +43,12 @@
       (is (every? #(= 5 (count (:ids %))) encs))
       (is (= 3 (reduce + (:attention-mask (first encs)))) "[CLS] hi [SEP]")
       (is (= 5 (reduce + (:attention-mask (second encs)))) "[CLS] hello there friend [SEP]"))))
+
+(deftest native-runtime-preflight-explains-macos-x86-jvm
+  (let [check (resolve 'tokenizers.core/assert-compatible-native-runtime!)]
+    (is check)
+    (when check
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"requires an arm64/aarch64 JVM on macOS"
+           (check "Mac OS X" "x86_64"))))))

@@ -69,6 +69,25 @@ rectangular; real token counts are recoverable from each `:attention-mask`.
   afterwards under `~/.djl.ai/`), and on `from-pretrained` to download the model
   file
 
+### Troubleshooting: `Unexpected flavor: cpu`
+
+On macOS, DJL 0.36.0 ships an `osx-aarch64` tokenizer native library, but not an
+`osx-x86_64` one. If your JVM reports `os.arch=x86_64`, tokenizer construction
+will fail. On Apple Silicon this usually means your shell is selecting an Intel
+JDK under Rosetta.
+
+Check what your current JVM reports:
+
+```sh
+java -XshowSettings:properties -version 2>&1 | grep 'os.arch\|java.home'
+```
+
+Use an arm64 JDK before running your app or tests:
+
+```sh
+JAVA_HOME=/opt/homebrew/opt/openjdk PATH=/opt/homebrew/opt/openjdk/bin:$PATH clojure -M:test
+```
+
 ## License
 
 Copyright © 2026 Savyasachi
