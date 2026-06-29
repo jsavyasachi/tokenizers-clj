@@ -17,8 +17,7 @@ A thin Clojure wrapper over [DJL](https://djl.ai/)'s
 `ai.djl.huggingface/tokenizers`, which binds the same fast Rust
 [`tokenizers`](https://github.com/huggingface/tokenizers) that HuggingFace ships
 for Python. It gives you exact token counts and ids for BERT, GPT, Llama, Qwen,
-and any other model that publishes a `tokenizer.json` - no Python, no network at
-runtime once the model file is local.
+and any other model that publishes a `tokenizer.json`.
 
 ## Install
 
@@ -65,14 +64,10 @@ rectangular; real token counts are recoverable from each `:attention-mask`.
 
 ## Requirements
 
-- JDK 8+.
-- **A JVM matching your CPU architecture.** DJL loads a native library for the
-  JVM's reported `os.arch`, so on Apple Silicon use an **arm64** JDK - an x86_64
-  JVM running under Rosetta fails to resolve the native tokenizer
-  (`Unexpected flavor: cpu`).
+- JDK 8+
 - Network access the first time DJL fetches the native library (cached
   afterwards under `~/.djl.ai/`), and on `from-pretrained` to download the model
-  file.
+  file
 
 ## License
 
