@@ -24,13 +24,13 @@ and any other model that publishes a `tokenizer.json`.
 Leiningen / Boot:
 
 ```clojure
-[net.clojars.savya/tokenizers-clj "0.1.1"]
+[net.clojars.savya/tokenizers-clj "0.1.2"]
 ```
 
 deps.edn:
 
 ```clojure
-net.clojars.savya/tokenizers-clj {:mvn/version "0.1.1"}
+net.clojars.savya/tokenizers-clj {:mvn/version "0.1.2"}
 ```
 
 ## Usage

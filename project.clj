@@ -1,4 +1,4 @@
-(defproject net.clojars.savya/tokenizers-clj "0.1.1"
+(defproject net.clojars.savya/tokenizers-clj "0.1.2"
   :description "Idiomatic Clojure wrapper over DJL's HuggingFace tokenizers (native Rust tokenizers via JNI): encode, decode, and count tokens."
   :url "https://github.com/jsavyasachi/tokenizers-clj"
   :license {:name "Eclipse Public License 2.0"
