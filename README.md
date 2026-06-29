@@ -65,6 +65,11 @@ rectangular; real token counts are recoverable from each `:attention-mask`.
 ## Requirements
 
 - JDK 8+
+- **A JVM matching your CPU architecture.** DJL loads a native library for the
+  JVM's reported `os.arch`, so on Apple Silicon use an **arm64** JDK - an x86_64
+  JVM running under Rosetta fails to resolve the native tokenizer
+  (`Unexpected flavor: cpu`); check with
+  `java -XshowSettings:properties -version 2>&1 | grep 'os.arch\|java.home'`.
 - Network access the first time DJL fetches the native library (cached
   afterwards under `~/.djl.ai/`), and on `from-pretrained` to download the model
   file
