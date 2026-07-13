@@ -10,6 +10,8 @@ HuggingFace `tokenizer.json`, backed by the native Rust `tokenizers` library.
 ## Stack
 
 <a href="https://clojure.org"><img src="https://img.shields.io/badge/Clojure-5881D8?style=flat&logo=clojure&logoColor=white" alt="Clojure" /></a>
+<a href="https://clojure.org/guides/deps_and_cli"><img src="https://img.shields.io/badge/deps.edn-5881D8?style=flat&logo=clojure&logoColor=fff" alt="deps.edn" /></a>
+<a href="https://clojure.github.io/tools.build/"><img src="https://img.shields.io/badge/tools.build-5881D8?style=flat&logo=clojure&logoColor=fff" alt="tools.build" /></a>
 <a href="https://www.java.com"><img src="https://img.shields.io/badge/JVM-ED8B00?style=flat&logo=openjdk&logoColor=white" alt="JVM" /></a>
 <a href="https://huggingface.co/docs/tokenizers"><img src="https://img.shields.io/badge/HuggingFace%20Tokenizers-FFD21E?style=flat&logo=huggingface&logoColor=000" alt="HuggingFace Tokenizers" /></a>
 
@@ -21,16 +23,16 @@ and any other model that publishes a `tokenizer.json`.
 
 ## Install
 
-Leiningen / Boot:
-
-```clojure
-[net.clojars.savya/tokenizers-clj "0.1.2"]
-```
-
 deps.edn:
 
 ```clojure
 net.clojars.savya/tokenizers-clj {:mvn/version "0.1.2"}
+```
+
+Leiningen / Boot:
+
+```clojure
+[net.clojars.savya/tokenizers-clj "0.1.2"]
 ```
 
 ## Usage
@@ -64,7 +66,7 @@ rectangular; real token counts are recoverable from each `:attention-mask`.
 
 ## Requirements
 
-- JDK 8+
+- JDK 21
 - **A JVM matching your CPU architecture.** DJL loads a native library for the
   JVM's reported `os.arch`, so on Apple Silicon use an **arm64** JDK - an x86_64
   JVM running under Rosetta fails to resolve the native tokenizer
