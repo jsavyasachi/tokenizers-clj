@@ -5,6 +5,7 @@
 
   A tokenizer holds a native handle: close it (`with-open` works) to free it."
   (:import [ai.djl.huggingface.tokenizers HuggingFaceTokenizer Encoding]
+           [ai.djl.huggingface.tokenizers.jni CharSpan]
            [java.io File InputStream]
            [java.nio.file Path]
            [java.util HashMap Locale]))
@@ -57,17 +58,25 @@
   (assert-compatible-native-runtime!)
   (HuggingFaceTokenizer/newInstance is (HashMap.)))
 
+(defn- span->offset [^CharSpan span]
+  (when span
+    [(.getStart span) (.getEnd span)]))
+
 (defn- enc->map [^Encoding e]
   {:ids (vec (.getIds e))
    :tokens (vec (.getTokens e))
    :type-ids (vec (.getTypeIds e))
    :word-ids (vec (.getWordIds e))
    :attention-mask (vec (.getAttentionMask e))
-   :special-tokens-mask (vec (.getSpecialTokenMask e))})
+   :special-tokens-mask (vec (.getSpecialTokenMask e))
+   :offsets (mapv span->offset (.getCharTokenSpans e))
+   :sequence-ids (vec (.getSequenceIds e))
+   :overflow (mapv enc->map (.getOverflowing e))
+   :exceed-max-length? (.exceedMaxLength e)})
 
 (defn encode
-  "Encode `text` into a map of `:ids :tokens :type-ids :word-ids :attention-mask
-  :special-tokens-mask`. Opts: `:add-special-tokens?` (default true),
+  "Encode `text` into a map of token data, offsets, sequence ids, overflow
+  encodings, and max-length status. Opts: `:add-special-tokens?` (default true),
   `:with-overflowing-tokens?` (default false)."
   ([^HuggingFaceTokenizer t ^String text]
    (enc->map (.encode t text)))

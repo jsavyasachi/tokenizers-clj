@@ -17,6 +17,15 @@
       (is (= [1 1 1 1 1 1] (:attention-mask enc)))
       (is (= 6 (count (:type-ids enc)))))))
 
+(deftest encode-exposes-source-attribution-and-overflow-metadata
+  (with-open [t (tok/from-file fixture)]
+    (let [enc (tok/encode t "Hello, world!")]
+      (is (= [nil [0 5] [5 6] [7 12] [12 13] nil]
+             (:offsets enc)))
+      (is (= [-1 0 0 0 0 -1] (:sequence-ids enc)))
+      (is (= [] (:overflow enc)))
+      (is (false? (:exceed-max-length? enc))))))
+
 (deftest count-tokens-and-special-tokens-toggle
   (with-open [t (tok/from-file fixture)]
     (is (= 6 (tok/count-tokens t "Hello, world!")))
