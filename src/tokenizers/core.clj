@@ -4,10 +4,16 @@
   `from-pretrained` / `from-stream`, then `encode`, `decode`, or `count-tokens`.
 
   A tokenizer holds a native handle: close it (`with-open` works) to free it."
+  (:require [clojure.string :as str])
   (:import [ai.djl.huggingface.tokenizers HuggingFaceTokenizer Encoding TokenizerConfig]
            [ai.djl.huggingface.tokenizers.jni CharSpan]
            [java.io File InputStream]
-           [java.nio.file Path]
+           [java.net URI URLEncoder]
+           [java.net.http HttpClient HttpClient$Redirect HttpRequest
+            HttpResponse$BodyHandlers]
+           [java.nio.charset StandardCharsets]
+           [java.nio.file CopyOption Files LinkOption OpenOption Path StandardCopyOption]
+           [java.nio.file.attribute FileAttribute]
            [java.util Locale]
            [ai.djl.util PairList]))
 
@@ -52,8 +58,9 @@
         padding (if (contains? opts :padding)
                   (:padding opts)
                   (:padding? opts))]
-    (update-vals
-     (cond-> {}
+    (into {}
+          (map (fn [[key value]] [key (str value)]))
+          (cond-> {}
        (some? truncation)
        (assoc "truncation" (option-value truncation
                                           {true "LONGEST_FIRST"
@@ -88,9 +95,8 @@
        (contains? opts :with-overflowing-tokens?)
        (assoc "withOverflowingTokens" (:with-overflowing-tokens? opts))
 
-       (contains? opts :lowercase?)
-       (assoc "doLowerCase" (:lowercase? opts)))
-     str)))
+            (contains? opts :lowercase?)
+            (assoc "doLowerCase" (:lowercase? opts))))))
 
 (defn- tokenizer-config [opts]
   (some-> (:tokenizer-config opts) as-path TokenizerConfig/load))
@@ -110,14 +116,80 @@
        (HuggingFaceTokenizer/newInstance path (str (as-path config)) options)
        (HuggingFaceTokenizer/newInstance path options)))))
 
+(defn- encode-component [value]
+  (.replace (URLEncoder/encode (str value) StandardCharsets/UTF_8) "+" "%20"))
+
+(defn- hub-uri [id revision]
+  (URI/create
+   (str "https://huggingface.co/"
+        (str/replace (encode-component id) "%2F" "/")
+        "/resolve/" (encode-component revision) "/tokenizer.json")))
+
+(defn- hub-cache-path [id revision cache-dir]
+  (-> (as-path (or cache-dir
+                   (str (System/getProperty "user.home")
+                        File/separator ".cache" File/separator
+                        "huggingface" File/separator "tokenizers-clj")))
+      (.resolve ^String (encode-component id))
+      (.resolve ^String (encode-component revision))
+      (.resolve "tokenizer.json")))
+
+(defn- download-tokenizer! [uri ^Path target auth-token]
+  (Files/createDirectories (.getParent target) (make-array FileAttribute 0))
+  (let [request-builder (doto (HttpRequest/newBuilder uri) (.GET))
+        _ (when auth-token
+            (.header request-builder "Authorization" (str "Bearer " auth-token)))
+        client (-> (HttpClient/newBuilder)
+                   (.followRedirects HttpClient$Redirect/ALWAYS)
+                   (.build))
+        response (.send client (.build request-builder)
+                        (HttpResponse$BodyHandlers/ofByteArray))
+        status (.statusCode response)]
+    (when-not (<= 200 status 299)
+      (throw (ex-info (str "HuggingFace Hub returned HTTP " status " for " uri)
+                      {:status status :uri (str uri)})))
+    (let [temp (Files/createTempFile (.getParent target) ".tokenizer-" ".json"
+                                     (make-array FileAttribute 0))]
+      (try
+        (Files/write temp ^bytes (.body response) (make-array OpenOption 0))
+        (Files/move temp target
+                    (into-array CopyOption [StandardCopyOption/REPLACE_EXISTING]))
+        (finally
+          (Files/deleteIfExists temp))))
+    target))
+
+(def ^:private hub-option-keys
+  #{:revision :auth-token :cache-dir :local-only? :local-only :offline? :offline})
+
+(defn- wrapper-managed-hub? [opts]
+  (some #(contains? opts %) [:revision :cache-dir :local-only? :local-only
+                             :offline? :offline]))
+
+(defn- offline? [opts]
+  (boolean (or (:local-only? opts) (:local-only opts)
+               (:offline? opts) (:offline opts))))
+
 (defn from-pretrained
-  "Tokenizer by HuggingFace hub id, e.g. \"bert-base-uncased\". Downloads then caches.
-  Needs network on first use."
+  "Tokenizer by HuggingFace Hub id. Options include `:revision`, `:auth-token`,
+  `:cache-dir`, and `:local-only?` / `:offline?`, plus constructor options."
   (^HuggingFaceTokenizer [^String id]
    (from-pretrained id {}))
   (^HuggingFaceTokenizer [^String id opts]
    (assert-compatible-native-runtime!)
-   (HuggingFaceTokenizer/newInstance id (djl-options opts))))
+   (if (wrapper-managed-hub? opts)
+     (let [revision (str (or (:revision opts) "main"))
+           path (hub-cache-path id revision (:cache-dir opts))]
+       (when-not (Files/exists path (make-array LinkOption 0))
+         (if (offline? opts)
+           (throw (ex-info (str "Tokenizer " id " at revision " revision
+                               " was not found in the local cache")
+                           {:id id :revision revision :cache-path (str path)}))
+           (download-tokenizer! (hub-uri id revision) path (:auth-token opts))))
+       (from-file path (apply dissoc opts hub-option-keys)))
+     (HuggingFaceTokenizer/newInstance
+      id
+      (cond-> (djl-options opts)
+        (:auth-token opts) (assoc "hf_token" (str (:auth-token opts))))))))
 
 (defn from-stream
   "Tokenizer from an `InputStream` over a `tokenizer.json`, with constructor opts."

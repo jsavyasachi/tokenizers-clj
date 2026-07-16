@@ -1,7 +1,11 @@
 (ns tokenizers.core-test
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.java.io :as io]
-            [tokenizers.core :as tok]))
+            [tokenizers.core :as tok])
+  (:import [com.sun.net.httpserver HttpHandler HttpServer]
+           [java.net InetSocketAddress URI]
+           [java.nio.file Files StandardCopyOption]
+           [java.nio.file.attribute FileAttribute]))
 
 (def fixture
   "bert-base-uncased tokenizer.json, vendored so the suite is offline + deterministic.
@@ -58,7 +62,11 @@
       (is (= [7592] (tok/ids t "HELLO")))))
   (testing "tokenizer_config.json supplies model max length"
     (with-open [t (tok/from-file fixture {:tokenizer-config config-fixture})]
-      (is (true? (:exceed-max-length? (tok/encode t "one two three")))))))
+      (is (true? (:exceed-max-length? (tok/encode t "one two three"))))))
+  (testing "stream construction accepts the same options"
+    (with-open [stream (io/input-stream fixture)
+                t (tok/from-stream stream {:add-special-tokens? false})]
+      (is (= [7592] (tok/ids t "hello"))))))
 
 (deftest decode-roundtrip
   (with-open [t (tok/from-file fixture)]
@@ -118,6 +126,74 @@
           (is (= ["hello" "world"] (batch-decode t id-seqs)))
           (is (every? #(re-find #"\[CLS\]" %)
                       (batch-decode t id-seqs {:skip-special-tokens? false}))))))))
+
+(deftest from-pretrained-uses-revisioned-local-cache-offline
+  (let [cache (Files/createTempDirectory "tokenizers-clj-cache"
+                                         (make-array FileAttribute 0))
+        cached-dir (.resolve cache "acme%2Fmodel/abc123")
+        cached-tokenizer (.resolve cached-dir "tokenizer.json")]
+    (Files/createDirectories cached-dir (make-array FileAttribute 0))
+    (Files/copy (.toPath fixture) cached-tokenizer
+                (into-array java.nio.file.CopyOption
+                            [StandardCopyOption/REPLACE_EXISTING]))
+    (with-open [t (tok/from-pretrained "acme/model"
+                                       {:revision "abc123"
+                                        :cache-dir cache
+                                        :local-only? true
+                                        :add-special-tokens? false})]
+      (is (= [7592] (tok/ids t "hello"))))
+    (with-open [t (tok/from-pretrained "acme/model"
+                                       {:revision "abc123"
+                                        :cache-dir cache
+                                        :offline? true})]
+      (is (= [101 7592 102] (tok/ids t "hello"))))))
+
+(deftest from-pretrained-offline-requires-cached-revision
+  (let [cache (Files/createTempDirectory "tokenizers-clj-empty-cache"
+                                         (make-array FileAttribute 0))]
+    (is (thrown-with-msg?
+         clojure.lang.ExceptionInfo
+         #"not found in the local cache"
+         (tok/from-pretrained "acme/missing"
+                              {:revision "deadbeef"
+                               :cache-dir cache
+                               :local-only? true})))))
+
+(deftest from-pretrained-builds-pinned-hub-uri
+  (let [hub-uri (resolve 'tokenizers.core/hub-uri)]
+    (is hub-uri)
+    (when hub-uri
+      (is (= "https://huggingface.co/acme/model/resolve/refs%2Fpr%2F7/tokenizer.json"
+             (str (hub-uri "acme/model" "refs/pr/7")))))))
+
+(deftest hub-download-sends-auth-and-populates-cache
+  (let [download-tokenizer! (resolve 'tokenizers.core/download-tokenizer!)
+        received-auth (atom nil)
+        body (Files/readAllBytes (.toPath fixture))
+        server (HttpServer/create (InetSocketAddress. 0) 0)
+        target-dir (Files/createTempDirectory "tokenizers-clj-download"
+                                              (make-array FileAttribute 0))
+        target (.resolve target-dir "tokenizer.json")]
+    (is download-tokenizer!)
+    (.createContext
+     server "/tokenizer.json"
+     (reify HttpHandler
+       (handle [_ exchange]
+         (reset! received-auth (.getFirst (.getRequestHeaders exchange) "Authorization"))
+         (.sendResponseHeaders exchange 200 (alength body))
+         (with-open [out (.getResponseBody exchange)]
+           (.write out body)))))
+    (.start server)
+    (try
+      (when download-tokenizer!
+        (download-tokenizer!
+         (URI/create (str "http://127.0.0.1:" (.getPort (.getAddress server))
+                          "/tokenizer.json"))
+         target "hf_secret")
+        (is (= "Bearer hf_secret" @received-auth))
+        (is (= (seq body) (seq (Files/readAllBytes target)))))
+      (finally
+        (.stop server 0)))))
 
 (deftest native-runtime-preflight-explains-macos-x86-jvm
   (let [check (resolve 'tokenizers.core/assert-compatible-native-runtime!)]
