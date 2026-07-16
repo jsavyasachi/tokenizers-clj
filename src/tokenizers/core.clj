@@ -8,7 +8,8 @@
            [ai.djl.huggingface.tokenizers.jni CharSpan]
            [java.io File InputStream]
            [java.nio.file Path]
-           [java.util Locale]))
+           [java.util Locale]
+           [ai.djl.util PairList]))
 
 (defn- ^Path as-path [x]
   (cond
@@ -146,15 +147,23 @@
    :exceed-max-length? (.exceedMaxLength e)})
 
 (defn encode
-  "Encode `text` into a map of token data, offsets, sequence ids, overflow
-  encodings, and max-length status. Opts: `:add-special-tokens?` (default true),
-  `:with-overflowing-tokens?` (default false)."
+  "Encode `text`, optionally paired with a second text, into a token-data map.
+  Opts: `:add-special-tokens?` (default true), `:with-overflowing-tokens?`
+  (default false)."
   ([^HuggingFaceTokenizer t ^String text]
    (enc->map (.encode t text)))
-  ([^HuggingFaceTokenizer t ^String text {:keys [add-special-tokens? with-overflowing-tokens?]
-                                          :or {add-special-tokens? true
-                                               with-overflowing-tokens? false}}]
-   (enc->map (.encode t text (boolean add-special-tokens?) (boolean with-overflowing-tokens?)))))
+  ([^HuggingFaceTokenizer t ^String text pair-or-opts]
+   (if (map? pair-or-opts)
+     (let [{:keys [add-special-tokens? with-overflowing-tokens?]
+            :or {add-special-tokens? true with-overflowing-tokens? false}} pair-or-opts]
+       (enc->map (.encode t text (boolean add-special-tokens?)
+                          (boolean with-overflowing-tokens?))))
+     (enc->map (.encode t text ^String pair-or-opts))))
+  ([^HuggingFaceTokenizer t ^String text ^String text-pair
+    {:keys [add-special-tokens? with-overflowing-tokens?]
+     :or {add-special-tokens? true with-overflowing-tokens? false}}]
+   (enc->map (.encode t text text-pair (boolean add-special-tokens?)
+                      (boolean with-overflowing-tokens?)))))
 
 (defn ids
   "Token ids for `text` (see `encode` for opts)."
@@ -182,3 +191,20 @@
   "Encode many `texts` at once, returning a vector of `encode`-shaped maps."
   [^HuggingFaceTokenizer t texts]
   (mapv enc->map (.batchEncode t ^java.util.List (vec texts))))
+
+(defn- ->pair-list [pairs]
+  (let [pair-list (PairList.)]
+    (doseq [[text text-pair] pairs]
+      (.add pair-list text text-pair))
+    pair-list))
+
+(defn batch-encode-pairs
+  "Encode `[text text-pair]` pairs, returning encode-shaped maps."
+  ([^HuggingFaceTokenizer t pairs]
+   (mapv enc->map (.batchEncode t ^PairList (->pair-list pairs))))
+  ([^HuggingFaceTokenizer t pairs
+    {:keys [add-special-tokens? with-overflowing-tokens?]
+     :or {add-special-tokens? true with-overflowing-tokens? false}}]
+   (mapv enc->map (.batchEncode t ^PairList (->pair-list pairs)
+                               (boolean add-special-tokens?)
+                               (boolean with-overflowing-tokens?)))))

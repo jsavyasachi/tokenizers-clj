@@ -68,6 +68,28 @@
       (is (re-find #"hello" text))
       (is (re-find #"world" text)))))
 
+(deftest paired-sequence-encode
+  (with-open [t (tok/from-file fixture)]
+    (let [enc (tok/encode t "hello world" "goodbye friend")]
+      (is (= ["[CLS]" "hello" "world" "[SEP]" "goodbye" "friend" "[SEP]"]
+             (:tokens enc)))
+      (is (= [0 0 0 0 1 1 1] (:type-ids enc)))
+      (is (= [-1 0 0 -1 1 1 -1] (:sequence-ids enc))))
+    (is (= [7592 2088 9119 2767]
+           (:ids (tok/encode t "hello world" "goodbye friend"
+                             {:add-special-tokens? false}))))))
+
+(deftest paired-batch-encode
+  (let [batch-encode-pairs (resolve 'tokenizers.core/batch-encode-pairs)]
+    (is batch-encode-pairs)
+    (when batch-encode-pairs
+      (with-open [t (tok/from-file fixture)]
+        (let [encs (batch-encode-pairs t [["hello" "world"]
+                                           ["goodbye" "friend"]])]
+          (is (= 2 (count encs)))
+          (is (every? #(some #{1} (:type-ids %)) encs))
+          (is (every? #(some #{1} (:sequence-ids %)) encs)))))))
+
 (deftest batch-encode-pads-to-longest
   ;; DJL batchEncode pads every sequence to the batch's longest so the result is
   ;; rectangular: both :ids are length 5 here. Real token counts live in :attention-mask
