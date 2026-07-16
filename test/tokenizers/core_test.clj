@@ -101,6 +101,24 @@
       (is (= 3 (reduce + (:attention-mask (first encs)))) "[CLS] hi [SEP]")
       (is (= 5 (reduce + (:attention-mask (second encs)))) "[CLS] hello there friend [SEP]"))))
 
+(deftest batch-encode-accepts-encode-options
+  (with-open [t (tok/from-file fixture)]
+    (let [encs (tok/batch-encode t ["hello" "world"]
+                                 {:add-special-tokens? false
+                                  :with-overflowing-tokens? true})]
+      (is (= [[7592] [2088]] (mapv :ids encs)))
+      (is (= [[] []] (mapv :overflow encs))))))
+
+(deftest batch-decode-many-id-sequences
+  (let [batch-decode (resolve 'tokenizers.core/batch-decode)]
+    (is batch-decode)
+    (when batch-decode
+      (with-open [t (tok/from-file fixture)]
+        (let [id-seqs (mapv :ids (tok/batch-encode t ["hello" "world"]))]
+          (is (= ["hello" "world"] (batch-decode t id-seqs)))
+          (is (every? #(re-find #"\[CLS\]" %)
+                      (batch-decode t id-seqs {:skip-special-tokens? false}))))))))
+
 (deftest native-runtime-preflight-explains-macos-x86-jvm
   (let [check (resolve 'tokenizers.core/assert-compatible-native-runtime!)]
     (is check)

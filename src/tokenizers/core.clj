@@ -188,9 +188,25 @@
    (.decode t (long-array id-seq) (boolean skip-special-tokens?))))
 
 (defn batch-encode
-  "Encode many `texts` at once, returning a vector of `encode`-shaped maps."
-  [^HuggingFaceTokenizer t texts]
-  (mapv enc->map (.batchEncode t ^java.util.List (vec texts))))
+  "Encode many `texts` at once, returning a vector of `encode`-shaped maps.
+  Accepts the same options as `encode`."
+  ([^HuggingFaceTokenizer t texts]
+   (mapv enc->map (.batchEncode t ^java.util.List (vec texts))))
+  ([^HuggingFaceTokenizer t texts
+    {:keys [add-special-tokens? with-overflowing-tokens?]
+     :or {add-special-tokens? true with-overflowing-tokens? false}}]
+   (mapv enc->map (.batchEncode t ^java.util.List (vec texts)
+                               (boolean add-special-tokens?)
+                               (boolean with-overflowing-tokens?)))))
+
+(defn batch-decode
+  "Decode many id sequences. Opts: `:skip-special-tokens?` (default true)."
+  ([^HuggingFaceTokenizer t id-seqs]
+   (batch-decode t id-seqs {}))
+  ([^HuggingFaceTokenizer t id-seqs
+    {:keys [skip-special-tokens?] :or {skip-special-tokens? true}}]
+   (vec (.batchDecode t ^"[[J" (into-array (map long-array id-seqs))
+                      (boolean skip-special-tokens?)))))
 
 (defn- ->pair-list [pairs]
   (let [pair-list (PairList.)]
