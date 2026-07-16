@@ -26,13 +26,13 @@ and any other model that publishes a `tokenizer.json`.
 deps.edn:
 
 ```clojure
-net.clojars.savya/tokenizers-clj {:mvn/version "0.1.2"}
+net.clojars.savya/tokenizers-clj {:mvn/version "0.2.0"}
 ```
 
 Leiningen / Boot:
 
 ```clojure
-[net.clojars.savya/tokenizers-clj "0.1.2"]
+[net.clojars.savya/tokenizers-clj "0.2.0"]
 ```
 
 ## Usage
@@ -50,7 +50,10 @@ Leiningen / Boot:
 ;=> {:ids [101 7592 1010 2088 999 102]
 ;    :tokens ["[CLS]" "hello" "," "world" "!" "[SEP]"]
 ;    :attention-mask [1 1 1 1 1 1]
-;    :type-ids [0 0 0 0 0 0] :word-ids [...] :special-tokens-mask [1 0 0 0 0 1]}
+;    :type-ids [0 0 0 0 0 0] :word-ids [...]
+;    :special-tokens-mask [1 0 0 0 0 1]
+;    :offsets [[0 0] [0 5] [5 6] [7 12] [12 13] [0 0]]
+;    :sequence-ids [...] :overflow [] :exceed-max-length? false}
 
 ;; Drop the framing special tokens for a raw count:
 (with-open [t (tok/from-pretrained "bert-base-uncased")]
@@ -61,8 +64,64 @@ Leiningen / Boot:
   (tok/decode t (tok/ids t "hello there" {:add-special-tokens? false})))  ;=> "hello there"
 ```
 
-`batch-encode` pads every sequence to the batch's longest so the result is
-rectangular; real token counts are recoverable from each `:attention-mask`.
+### Construction options
+
+`from-file`, `from-stream`, and `from-pretrained` accept an options map:
+
+- `:truncation`: `:longest-first`, `:only-first`, `:only-second`, or `:none`
+  (booleans are also accepted).
+- `:max-length` and `:stride`: truncation size and overlap.
+- `:padding`: `:longest`, `:max-length`, or `:none` (booleans are also accepted).
+- `:pad-to-multiple-of`: pad encoded lengths to a multiple.
+- `:add-special-tokens?`, `:with-overflowing-tokens?`, and `:lowercase?`: tokenizer
+  behavior flags.
+- `:tokenizer-config`: path, `File`, or `Path` to a `tokenizer_config.json`.
+
+`from-pretrained` also accepts `:revision`, `:auth-token`, `:cache-dir`, and
+`:local-only?` / `:offline?`. Supplying revision, cache, or offline options uses a
+revision-specific local cache; offline modes fail without making a network request
+when the tokenizer is absent.
+
+```clojure
+(with-open [t (tok/from-pretrained
+               "bert-base-uncased"
+               {:revision "main"
+                :cache-dir ".cache/tokenizers"
+                :truncation :longest-first
+                :max-length 128
+                :stride 16
+                :padding :max-length
+                :pad-to-multiple-of 8})]
+  (tok/encode t "A question" "A paired answer"))
+```
+
+### Encode results and batches
+
+Every `encode`, `batch-encode`, and `batch-encode-pairs` result contains `:ids`,
+`:tokens`, `:type-ids`, `:word-ids`, `:attention-mask`, `:special-tokens-mask`,
+`:offsets`, `:sequence-ids`, `:overflow`, and `:exceed-max-length?`. Overflow entries
+have the same shape.
+
+`encode` accepts a second string for paired-sequence encoding. Its four-argument form
+also accepts `:add-special-tokens?` and `:with-overflowing-tokens?`.
+
+```clojure
+(with-open [t (tok/from-pretrained "bert-base-uncased")]
+  (tok/encode t "Question" "Answer"
+              {:add-special-tokens? true
+               :with-overflowing-tokens? false})
+  (tok/batch-encode t ["first" "second"]
+                    {:add-special-tokens? false})
+  (tok/batch-encode-pairs t [["question 1" "answer 1"]
+                             ["question 2" "answer 2"]])
+  (tok/batch-decode t [[101 2034 102] [101 2117 102]]
+                    {:skip-special-tokens? true}))
+```
+
+Batch encoding options are the same as `encode` options. `batch-decode` accepts
+`:skip-special-tokens?`, which defaults to true. Padding configured at construction
+can make batch results rectangular; real token counts are recoverable from each
+`:attention-mask`.
 
 ## Requirements
 
