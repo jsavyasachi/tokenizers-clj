@@ -4,11 +4,11 @@
   `from-pretrained` / `from-stream`, then `encode`, `decode`, or `count-tokens`.
 
   A tokenizer holds a native handle: close it (`with-open` works) to free it."
-  (:import [ai.djl.huggingface.tokenizers HuggingFaceTokenizer Encoding]
+  (:import [ai.djl.huggingface.tokenizers HuggingFaceTokenizer Encoding TokenizerConfig]
            [ai.djl.huggingface.tokenizers.jni CharSpan]
            [java.io File InputStream]
            [java.nio.file Path]
-           [java.util HashMap Locale]))
+           [java.util Locale]))
 
 (defn- ^Path as-path [x]
   (cond
@@ -39,24 +39,95 @@
           :os-arch os-arch
           :expected-os-arch "aarch64"}))))))
 
+(defn- option-value [value choices option]
+  (or (get choices value)
+      (throw (ex-info (str "Unsupported " option ": " (pr-str value))
+                      {:option option :value value :supported (vec (keys choices))}))))
+
+(defn- djl-options [opts]
+  (let [truncation (if (contains? opts :truncation)
+                     (:truncation opts)
+                     (:truncation? opts))
+        padding (if (contains? opts :padding)
+                  (:padding opts)
+                  (:padding? opts))]
+    (update-vals
+     (cond-> {}
+       (some? truncation)
+       (assoc "truncation" (option-value truncation
+                                          {true "LONGEST_FIRST"
+                                           false "DO_NOT_TRUNCATE"
+                                           :longest-first "LONGEST_FIRST"
+                                           :only-first "ONLY_FIRST"
+                                           :only-second "ONLY_SECOND"
+                                           :none "DO_NOT_TRUNCATE"}
+                                          :truncation))
+
+       (some? padding)
+       (assoc "padding" (option-value padding
+                                       {true "LONGEST"
+                                        false "DO_NOT_PAD"
+                                        :longest "LONGEST"
+                                        :max-length "MAX_LENGTH"
+                                        :none "DO_NOT_PAD"}
+                                       :padding))
+
+       (contains? opts :max-length)
+       (assoc "maxLength" (:max-length opts))
+
+       (contains? opts :stride)
+       (assoc "stride" (:stride opts))
+
+       (contains? opts :pad-to-multiple-of)
+       (assoc "padToMultipleOf" (:pad-to-multiple-of opts))
+
+       (contains? opts :add-special-tokens?)
+       (assoc "addSpecialTokens" (:add-special-tokens? opts))
+
+       (contains? opts :with-overflowing-tokens?)
+       (assoc "withOverflowingTokens" (:with-overflowing-tokens? opts))
+
+       (contains? opts :lowercase?)
+       (assoc "doLowerCase" (:lowercase? opts)))
+     str)))
+
+(defn- tokenizer-config [opts]
+  (some-> (:tokenizer-config opts) as-path TokenizerConfig/load))
+
 (defn from-file
-  "Tokenizer from a `tokenizer.json` (path string, `File`, or `Path`)."
-  ^HuggingFaceTokenizer [path]
-  (assert-compatible-native-runtime!)
-  (HuggingFaceTokenizer/newInstance (as-path path)))
+  "Tokenizer from a `tokenizer.json` (path string, `File`, or `Path`).
+  Constructor options include `:truncation`, `:max-length`, `:stride`, `:padding`,
+  `:pad-to-multiple-of`, `:add-special-tokens?`, `:lowercase?`, and
+  `:tokenizer-config`."
+  (^HuggingFaceTokenizer [path]
+   (from-file path {}))
+  (^HuggingFaceTokenizer [path opts]
+   (assert-compatible-native-runtime!)
+   (let [path (as-path path)
+         options (djl-options opts)]
+     (if-let [config (:tokenizer-config opts)]
+       (HuggingFaceTokenizer/newInstance path (str (as-path config)) options)
+       (HuggingFaceTokenizer/newInstance path options)))))
 
 (defn from-pretrained
   "Tokenizer by HuggingFace hub id, e.g. \"bert-base-uncased\". Downloads then caches.
   Needs network on first use."
-  ^HuggingFaceTokenizer [^String id]
-  (assert-compatible-native-runtime!)
-  (HuggingFaceTokenizer/newInstance id))
+  (^HuggingFaceTokenizer [^String id]
+   (from-pretrained id {}))
+  (^HuggingFaceTokenizer [^String id opts]
+   (assert-compatible-native-runtime!)
+   (HuggingFaceTokenizer/newInstance id (djl-options opts))))
 
 (defn from-stream
-  "Tokenizer from an `InputStream` over a `tokenizer.json`."
-  ^HuggingFaceTokenizer [^InputStream is]
-  (assert-compatible-native-runtime!)
-  (HuggingFaceTokenizer/newInstance is (HashMap.)))
+  "Tokenizer from an `InputStream` over a `tokenizer.json`, with constructor opts."
+  (^HuggingFaceTokenizer [^InputStream is]
+   (from-stream is {}))
+  (^HuggingFaceTokenizer [^InputStream is opts]
+   (assert-compatible-native-runtime!)
+   (let [options (djl-options opts)]
+     (if-let [config (tokenizer-config opts)]
+       (HuggingFaceTokenizer/newInstance is options config)
+       (HuggingFaceTokenizer/newInstance is options)))))
 
 (defn- span->offset [^CharSpan span]
   (when span

@@ -8,6 +8,9 @@
   (DJL still fetches the native JNI lib once on first encode, then caches it.)"
   (io/file (io/resource "bert-base-uncased-tokenizer.json")))
 
+(def config-fixture
+  (io/file (io/resource "tokenizer_config.json")))
+
 ;; bert-base-uncased lowercases and frames with [CLS]/[SEP]; these ids are stable.
 (deftest encode-shape
   (with-open [t (tok/from-file fixture)]
@@ -33,6 +36,29 @@
       (is (= 4 (tok/count-tokens t "Hello, world!" {:add-special-tokens? false})))
       (is (= [7592 1010 2088 999]
              (tok/ids t "Hello, world!" {:add-special-tokens? false}))))))
+
+(deftest configurable-tokenizer-construction
+  (testing "truncation, stride, overflow, and padding"
+    (with-open [t (tok/from-file fixture {:truncation :longest-first
+                                          :max-length 8
+                                          :stride 2
+                                          :padding :max-length
+                                          :pad-to-multiple-of 4
+                                          :with-overflowing-tokens? true})]
+      (let [enc (tok/encode t "one two three four five six seven eight nine")]
+        (is (= 8 (count (:ids enc))))
+        (is (seq (:overflow enc)))
+        (is (= "LONGEST_FIRST" (.getTruncation t)))
+        (is (= "MAX_LENGTH" (.getPadding t)))
+        (is (= 2 (.getStride t)))
+        (is (= 4 (.getPadToMultipleOf t))))))
+  (testing "constructor-level special-token and lowercase controls"
+    (with-open [t (tok/from-file fixture {:add-special-tokens? false
+                                          :lowercase? true})]
+      (is (= [7592] (tok/ids t "HELLO")))))
+  (testing "tokenizer_config.json supplies model max length"
+    (with-open [t (tok/from-file fixture {:tokenizer-config config-fixture})]
+      (is (true? (:exceed-max-length? (tok/encode t "one two three")))))))
 
 (deftest decode-roundtrip
   (with-open [t (tok/from-file fixture)]
