@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-07-16
+
+### Added
+- Pretokenized sequence encoding (`encode-pretokenized`) preserving word IDs.
+- Generic `builder` escape hatch to pass arbitrary DJL tokenizer options, and `from-bpe-files` construction from separate vocab.json + merges.txt.
+- Opt-in `encode->ndlist` / `batch-encode->ndlist` for direct DJL inference pipelines, and NDManager-owned tokenizer lifecycle.
+- Effective-config getters (`truncation`, `padding`, `max-length`, `stride`, `pad-to-multiple-of`, `effective-config`), `build-sentence`, and `native-version`.
+
 ## [0.2.0] - 2026-07-16
 
 ### Added
