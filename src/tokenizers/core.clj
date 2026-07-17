@@ -241,6 +241,43 @@
                                      (as-path merges-path)
                                      (constructor-options opts))))
 
+(defn- strategy-keyword [value]
+  (some-> value lower-prop (str/replace "_" "-") keyword))
+
+(defn truncation
+  "Effective native truncation strategy as a keyword."
+  [^HuggingFaceTokenizer t]
+  (strategy-keyword (.getTruncation t)))
+
+(defn padding
+  "Effective native padding strategy as a keyword."
+  [^HuggingFaceTokenizer t]
+  (strategy-keyword (.getPadding t)))
+
+(defn max-length
+  "Effective native maximum sequence length."
+  [^HuggingFaceTokenizer t]
+  (.getMaxLength t))
+
+(defn stride
+  "Effective native truncation stride."
+  [^HuggingFaceTokenizer t]
+  (.getStride t))
+
+(defn pad-to-multiple-of
+  "Effective native padding multiple."
+  [^HuggingFaceTokenizer t]
+  (.getPadToMultipleOf t))
+
+(defn effective-config
+  "Effective native truncation and padding configuration as a Clojure map."
+  [^HuggingFaceTokenizer t]
+  {:truncation (truncation t)
+   :padding (padding t)
+   :max-length (max-length t)
+   :stride (stride t)
+   :pad-to-multiple-of (pad-to-multiple-of t)})
+
 (defn- span->offset [^CharSpan span]
   (when span
     [(.getStart span) (.getEnd span)]))

@@ -70,6 +70,34 @@
                 t (tok/from-stream stream {:add-special-tokens? false})]
       (is (= [7592] (tok/ids t "hello"))))))
 
+(deftest effective-native-tokenizer-config
+  (let [truncation (resolve 'tokenizers.core/truncation)
+        padding (resolve 'tokenizers.core/padding)
+        max-length (resolve 'tokenizers.core/max-length)
+        stride (resolve 'tokenizers.core/stride)
+        pad-to-multiple-of (resolve 'tokenizers.core/pad-to-multiple-of)
+        effective-config (resolve 'tokenizers.core/effective-config)]
+    (is (every? some? [truncation padding max-length stride
+                       pad-to-multiple-of effective-config]))
+    (when (every? some? [truncation padding max-length stride
+                         pad-to-multiple-of effective-config])
+      (with-open [t (tok/from-file fixture {:truncation :only-first
+                                            :max-length 12
+                                            :stride 3
+                                            :padding :max-length
+                                            :pad-to-multiple-of 4})]
+        (is (= :only-first (truncation t)))
+        (is (= :max-length (padding t)))
+        (is (= 12 (max-length t)))
+        (is (= 3 (stride t)))
+        (is (= 4 (pad-to-multiple-of t)))
+        (is (= {:truncation :only-first
+                :padding :max-length
+                :max-length 12
+                :stride 3
+                :pad-to-multiple-of 4}
+               (effective-config t)))))))
+
 (deftest raw-builder-options-pass-through
   (with-open [t (tok/from-file fixture
                                {:options {:modelMaxLength 2
