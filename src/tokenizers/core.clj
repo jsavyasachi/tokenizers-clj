@@ -289,6 +289,23 @@
                       (boolean add-special-tokens?)
                       (boolean with-overflowing-tokens?)))))
 
+(defn encode->ndlist
+  "Encode `text` directly to a DJL `NDList` owned by `manager`.
+  Opts include the `encode` opts plus `:with-token-type-ids?` and `:int32?`
+  (both default false). The caller owns and must close the `NDManager`."
+  ([^HuggingFaceTokenizer t ^String text manager]
+   (encode->ndlist t text manager {}))
+  ([^HuggingFaceTokenizer t ^String text manager
+    {:keys [add-special-tokens? with-overflowing-tokens?
+            with-token-type-ids? int32?]
+     :or {add-special-tokens? true
+          with-overflowing-tokens? false
+          with-token-type-ids? false
+          int32? false}}]
+   (-> (.encode t text (boolean add-special-tokens?)
+                (boolean with-overflowing-tokens?))
+       (.toNDList manager (boolean with-token-type-ids?) (boolean int32?)))))
+
 (defn ids
   "Token ids for `text` (see `encode` for opts)."
   ([t text] (:ids (encode t text)))
@@ -322,6 +339,26 @@
    (mapv enc->map (.batchEncode t ^java.util.List (vec texts)
                                (boolean add-special-tokens?)
                                (boolean with-overflowing-tokens?)))))
+
+(defn batch-encode->ndlist
+  "Encode `texts` directly to one batched DJL `NDList` owned by `manager`.
+  Opts include the `batch-encode` opts plus `:with-token-type-ids?` and
+  `:int32?` (both default false). The caller owns and must close the
+  `NDManager`."
+  ([^HuggingFaceTokenizer t texts manager]
+   (batch-encode->ndlist t texts manager {}))
+  ([^HuggingFaceTokenizer t texts manager
+    {:keys [add-special-tokens? with-overflowing-tokens?
+            with-token-type-ids? int32?]
+     :or {add-special-tokens? true
+          with-overflowing-tokens? false
+          with-token-type-ids? false
+          int32? false}}]
+   (Encoding/toNDList
+    (.batchEncode t ^java.util.List (vec texts)
+                  (boolean add-special-tokens?)
+                  (boolean with-overflowing-tokens?))
+    manager (boolean with-token-type-ids?) (boolean int32?))))
 
 (defn batch-decode
   "Decode many id sequences. Opts: `:skip-special-tokens?` (default true)."

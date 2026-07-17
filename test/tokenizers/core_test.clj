@@ -2,7 +2,8 @@
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.java.io :as io]
             [tokenizers.core :as tok])
-  (:import [ai.djl.ndarray NDManager]
+  (:import [ai.djl.ndarray NDList NDManager]
+           [ai.djl.ndarray.types DataType]
            [com.sun.net.httpserver HttpHandler HttpServer]
            [java.net InetSocketAddress URI]
            [java.nio.file Files OpenOption StandardCopyOption]
@@ -166,6 +167,34 @@
                                   :with-overflowing-tokens? true})]
       (is (= [[7592] [2088]] (mapv :ids encs)))
       (is (= [[] []] (mapv :overflow encs))))))
+
+(deftest encoding-to-ndlist-for-inference
+  (let [encode->ndlist (resolve 'tokenizers.core/encode->ndlist)]
+    (is encode->ndlist)
+    (when encode->ndlist
+      (with-open [manager (NDManager/newBaseManager)
+                  t (tok/from-file fixture)
+                  nd-list (encode->ndlist
+                           t "hello" manager
+                           {:with-token-type-ids? true :int32? true})]
+        (is (instance? NDList nd-list))
+        (is (= 3 (count nd-list)))
+        (is (= [101 7592 102] (vec (.toIntArray (.head nd-list)))))
+        (is (= DataType/INT32 (.getDataType (.head nd-list))))))))
+
+(deftest batch-encoding-to-ndlist-for-inference
+  (let [batch-encode->ndlist (resolve 'tokenizers.core/batch-encode->ndlist)]
+    (is batch-encode->ndlist)
+    (when batch-encode->ndlist
+      (with-open [manager (NDManager/newBaseManager)
+                  t (tok/from-file fixture)
+                  nd-list (batch-encode->ndlist
+                           t ["hello" "world"] manager
+                           {:with-token-type-ids? true})]
+        (is (instance? NDList nd-list))
+        (is (= 3 (count nd-list)))
+        (is (= [101 7592 102 101 2088 102]
+               (vec (.toLongArray (.head nd-list)))))))))
 
 (deftest batch-decode-many-id-sequences
   (let [batch-decode (resolve 'tokenizers.core/batch-decode)]
