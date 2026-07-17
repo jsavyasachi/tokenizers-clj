@@ -142,6 +142,24 @@
       (is (re-find #"hello" text))
       (is (re-find #"world" text)))))
 
+(deftest build-sentence-from-token-strings
+  (let [build-sentence (resolve 'tokenizers.core/build-sentence)]
+    (is build-sentence)
+    (when build-sentence
+      (with-open [t (tok/from-file fixture)]
+        (is (= "hello worlds"
+               (build-sentence t ["hello" "world" "##s"])))))))
+
+(deftest loaded-native-runtime-version
+  (let [native-version (resolve 'tokenizers.core/native-version)]
+    (is native-version)
+    (when native-version
+      (with-open [t (tok/from-file fixture)]
+        (let [version (native-version t)]
+          (is (string? version))
+          (is (re-matches #"\d+\.\d+\.\d+(?:-\d+\.\d+\.\d+)?" version))
+          (is (= (.getVersion t) version)))))))
+
 (deftest paired-sequence-encode
   (with-open [t (tok/from-file fixture)]
     (let [enc (tok/encode t "hello world" "goodbye friend")]

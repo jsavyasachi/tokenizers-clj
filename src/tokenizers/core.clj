@@ -365,6 +365,17 @@
   ([^HuggingFaceTokenizer t id-seq {:keys [skip-special-tokens?] :or {skip-special-tokens? true}}]
    (.decode t (long-array id-seq) (boolean skip-special-tokens?))))
 
+(defn build-sentence
+  "Reconstruct a sentence from token strings, applying the tokenizer's native
+  token-joining rules. This is distinct from decoding token IDs."
+  [^HuggingFaceTokenizer t token-strings]
+  (.buildSentence t ^java.util.List (vec token-strings)))
+
+(defn native-version
+  "Version of the loaded native tokenizers runtime."
+  [^HuggingFaceTokenizer t]
+  (.getVersion t))
+
 (defn batch-encode
   "Encode many `texts` at once, returning a vector of `encode`-shaped maps.
   Accepts the same options as `encode`."
