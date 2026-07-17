@@ -2,7 +2,8 @@
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.java.io :as io]
             [tokenizers.core :as tok])
-  (:import [com.sun.net.httpserver HttpHandler HttpServer]
+  (:import [ai.djl.ndarray NDManager]
+           [com.sun.net.httpserver HttpHandler HttpServer]
            [java.net InetSocketAddress URI]
            [java.nio.file Files StandardCopyOption]
            [java.nio.file.attribute FileAttribute]))
@@ -67,6 +68,23 @@
     (with-open [stream (io/input-stream fixture)
                 t (tok/from-stream stream {:add-special-tokens? false})]
       (is (= [7592] (tok/ids t "hello"))))))
+
+(deftest raw-builder-options-pass-through
+  (with-open [t (tok/from-file fixture
+                               {:options {:modelMaxLength 2
+                                          :addSpecialTokens false}})]
+    (let [enc (tok/encode t "one two three")]
+      (is (= [2028 2048] (:ids enc)))
+      (is (true? (:exceed-max-length? enc))))))
+
+(deftest tokenizer-can-be-owned-by-an-ndmanager
+  (let [manager (NDManager/newBaseManager)
+        t (tok/from-file fixture {:manager manager})]
+    (try
+      (is (false? (.isReleased t)))
+      (finally
+        (.close manager)))
+    (is (true? (.isReleased t)))))
 
 (deftest decode-roundtrip
   (with-open [t (tok/from-file fixture)]

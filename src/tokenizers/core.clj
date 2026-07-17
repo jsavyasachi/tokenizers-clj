@@ -98,6 +98,30 @@
             (contains? opts :lowercase?)
             (assoc "doLowerCase" (:lowercase? opts))))))
 
+(defn- raw-options [opts]
+  (into {}
+        (map (fn [[key value]]
+               [(if (keyword? key) (name key) (str key)) (str value)]))
+        (merge (:options opts) (:raw-options opts))))
+
+(defn- constructor-options [opts]
+  (merge (djl-options opts) (raw-options opts)))
+
+(defn builder
+  "Create a DJL tokenizer builder configured from wrapper opts.
+  Entries in `:options` or `:raw-options` pass through verbatim by DJL option
+  name, such as `modelMaxLength`, `stripAccents`, and `addPrefixSpace`; keyword
+  keys are converted with `name`. Raw entries override translated wrapper opts.
+  `:manager` attaches the built tokenizer to a caller-supplied `NDManager`."
+  ([]
+   (HuggingFaceTokenizer/builder))
+  ([opts]
+   (let [builder (HuggingFaceTokenizer/builder)]
+     (.configure builder (constructor-options opts))
+     (when-let [manager (:manager opts)]
+       (.optManager builder manager))
+     builder)))
+
 (defn- tokenizer-config [opts]
   (some-> (:tokenizer-config opts) as-path TokenizerConfig/load))
 
@@ -105,16 +129,16 @@
   "Tokenizer from a `tokenizer.json` (path string, `File`, or `Path`).
   Constructor options include `:truncation`, `:max-length`, `:stride`, `:padding`,
   `:pad-to-multiple-of`, `:add-special-tokens?`, `:lowercase?`, and
-  `:tokenizer-config`."
+  `:tokenizer-config`. See `builder` for raw options and `:manager`."
   (^HuggingFaceTokenizer [path]
    (from-file path {}))
   (^HuggingFaceTokenizer [path opts]
    (assert-compatible-native-runtime!)
-   (let [path (as-path path)
-         options (djl-options opts)]
-     (if-let [config (:tokenizer-config opts)]
-       (HuggingFaceTokenizer/newInstance path (str (as-path config)) options)
-       (HuggingFaceTokenizer/newInstance path options)))))
+   (let [builder (builder opts)]
+     (.optTokenizerPath builder (as-path path))
+     (when-let [config (:tokenizer-config opts)]
+       (.optTokenizerConfigPath builder (str (as-path config))))
+     (.build builder))))
 
 (defn- encode-component [value]
   (.replace (URLEncoder/encode (str value) StandardCharsets/UTF_8) "+" "%20"))
@@ -185,11 +209,14 @@
                                " was not found in the local cache")
                            {:id id :revision revision :cache-path (str path)}))
            (download-tokenizer! (hub-uri id revision) path (:auth-token opts))))
-       (from-file path (apply dissoc opts hub-option-keys)))
-     (HuggingFaceTokenizer/newInstance
-      id
-      (cond-> (djl-options opts)
-        (:auth-token opts) (assoc "hf_token" (str (:auth-token opts))))))))
+     (from-file path (apply dissoc opts hub-option-keys)))
+     (let [opts (cond-> opts
+                  (:auth-token opts)
+                  (update :raw-options merge
+                          {"hf_token" (str (:auth-token opts))}))
+           builder (builder opts)]
+       (.optTokenizerName builder id)
+       (.build builder)))))
 
 (defn from-stream
   "Tokenizer from an `InputStream` over a `tokenizer.json`, with constructor opts."
@@ -197,7 +224,7 @@
    (from-stream is {}))
   (^HuggingFaceTokenizer [^InputStream is opts]
    (assert-compatible-native-runtime!)
-   (let [options (djl-options opts)]
+   (let [options (constructor-options opts)]
      (if-let [config (tokenizer-config opts)]
        (HuggingFaceTokenizer/newInstance is options config)
        (HuggingFaceTokenizer/newInstance is options)))))
