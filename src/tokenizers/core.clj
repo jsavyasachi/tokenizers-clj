@@ -229,6 +229,18 @@
        (HuggingFaceTokenizer/newInstance is options config)
        (HuggingFaceTokenizer/newInstance is options)))))
 
+(defn from-bpe-files
+  "BPE tokenizer from separate `vocab.json` and `merges.txt` paths.
+  Accepts the constructor options documented by `from-file`, including raw
+  `:options` / `:raw-options`."
+  (^HuggingFaceTokenizer [vocab-path merges-path]
+   (from-bpe-files vocab-path merges-path {}))
+  (^HuggingFaceTokenizer [vocab-path merges-path opts]
+   (assert-compatible-native-runtime!)
+   (HuggingFaceTokenizer/newInstance (as-path vocab-path)
+                                     (as-path merges-path)
+                                     (constructor-options opts))))
+
 (defn- span->offset [^CharSpan span]
   (when span
     [(.getStart span) (.getEnd span)]))

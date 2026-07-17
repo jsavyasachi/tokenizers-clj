@@ -5,7 +5,7 @@
   (:import [ai.djl.ndarray NDManager]
            [com.sun.net.httpserver HttpHandler HttpServer]
            [java.net InetSocketAddress URI]
-           [java.nio.file Files StandardCopyOption]
+           [java.nio.file Files OpenOption StandardCopyOption]
            [java.nio.file.attribute FileAttribute]))
 
 (def fixture
@@ -85,6 +85,25 @@
       (finally
         (.close manager)))
     (is (true? (.isReleased t)))))
+
+(deftest direct-bpe-vocab-and-merges-construction
+  (let [from-bpe-files (resolve 'tokenizers.core/from-bpe-files)
+        dir (Files/createTempDirectory "tokenizers-clj-bpe"
+                                       (make-array FileAttribute 0))
+        vocab (.resolve dir "vocab.json")
+        merges (.resolve dir "merges.txt")]
+    (Files/writeString
+     vocab
+     "{\"<unk>\":0,\"h\":1,\"e\":2,\"l\":3,\"o\":4,\"he\":5,\"hel\":6,\"hell\":7,\"hello\":8}"
+     (make-array OpenOption 0))
+    (Files/writeString merges "#version: 0.2\nh e\nhe l\nhel l\nhell o\n"
+                       (make-array OpenOption 0))
+    (is from-bpe-files)
+    (when from-bpe-files
+      (with-open [t (from-bpe-files vocab merges)]
+        (let [enc (tok/encode t "hello" {:add-special-tokens? false})]
+          (is (= [8] (:ids enc)))
+          (is (= ["hello"] (:tokens enc))))))))
 
 (deftest decode-roundtrip
   (with-open [t (tok/from-file fixture)]
