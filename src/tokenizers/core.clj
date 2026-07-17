@@ -237,6 +237,19 @@
    (enc->map (.encode t text text-pair (boolean add-special-tokens?)
                       (boolean with-overflowing-tokens?)))))
 
+(defn encode-pretokenized
+  "Encode an already-split sequence of word strings, preserving native word IDs.
+  Opts: `:add-special-tokens?` (default true), `:with-overflowing-tokens?`
+  (default false)."
+  ([^HuggingFaceTokenizer t words]
+   (enc->map (.encode t ^java.util.List (vec words))))
+  ([^HuggingFaceTokenizer t words
+    {:keys [add-special-tokens? with-overflowing-tokens?]
+     :or {add-special-tokens? true with-overflowing-tokens? false}}]
+   (enc->map (.encode t ^java.util.List (vec words)
+                      (boolean add-special-tokens?)
+                      (boolean with-overflowing-tokens?)))))
+
 (defn ids
   "Token ids for `text` (see `encode` for opts)."
   ([t text] (:ids (encode t text)))

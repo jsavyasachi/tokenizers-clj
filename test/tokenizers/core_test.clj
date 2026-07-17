@@ -87,6 +87,19 @@
            (:ids (tok/encode t "hello world" "goodbye friend"
                              {:add-special-tokens? false}))))))
 
+(deftest pretokenized-sequence-encode-preserves-word-ids
+  (let [encode-pretokenized (resolve 'tokenizers.core/encode-pretokenized)]
+    (is encode-pretokenized)
+    (when encode-pretokenized
+      (with-open [t (tok/from-file fixture)]
+        (let [enc (encode-pretokenized t ["hello" "worlds"])]
+          (is (= ["[CLS]" "hello" "worlds" "[SEP]"] (:tokens enc)))
+          (is (= [-1 0 1 -1] (:word-ids enc)))))
+      (with-open [t (tok/from-file fixture)]
+        (is (= [7592 8484]
+               (:ids (encode-pretokenized
+                      t ["hello" "worlds"] {:add-special-tokens? false}))))))))
+
 (deftest paired-batch-encode
   (let [batch-encode-pairs (resolve 'tokenizers.core/batch-encode-pairs)]
     (is batch-encode-pairs)
