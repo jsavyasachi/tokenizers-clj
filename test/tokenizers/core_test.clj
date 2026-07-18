@@ -328,3 +328,35 @@
            clojure.lang.ExceptionInfo
            #"requires an arm64/aarch64 JVM on macOS"
            (check "Mac OS X" "x86_64"))))))
+
+(deftest token-array-fast-paths-match-encode
+  (with-open [plain (tok/from-file fixture)
+              truncated (tok/from-file fixture
+                                       {:truncation true
+                                        :max-length 5
+                                        :stride 1})]
+    (doseq [[t text opts]
+            [[plain "Hello, world!" {}]
+             [plain "Hello, world!" {:add-special-tokens? false}]
+             [truncated "one two three four five six seven"
+              {:with-overflowing-tokens? true}]]]
+      (let [enc (tok/encode t text opts)]
+        (is (= (:ids enc) (tok/ids t text opts)))
+        (is (= (:tokens enc) (tok/tokens t text opts)))
+        (is (= (count (:ids enc)) (tok/count-tokens t text opts)))))))
+
+(deftest batch-count-tokens-matches-batch-encode
+  (let [batch-count-tokens (resolve 'tokenizers.core/batch-count-tokens)]
+    (is batch-count-tokens)
+    (when batch-count-tokens
+      (with-open [t (tok/from-file fixture)]
+        (let [texts ["hi" "hello there friend"]]
+          (is (= (mapv (comp count :ids) (tok/batch-encode t texts))
+                 (batch-count-tokens t texts)))
+          (is (= (mapv (comp count :ids)
+                       (tok/batch-encode t texts
+                                         {:add-special-tokens? false
+                                          :with-overflowing-tokens? true}))
+                 (batch-count-tokens t texts
+                                     {:add-special-tokens? false
+                                      :with-overflowing-tokens? true}))))))))

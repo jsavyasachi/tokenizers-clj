@@ -294,24 +294,32 @@
    :overflow (mapv enc->map (.getOverflowing e))
    :exceed-max-length? (.exceedMaxLength e)})
 
-(defn encode
-  "Encode `text`, optionally paired with a second text, into a token-data map.
-  Opts: `:add-special-tokens?` (default true), `:with-overflowing-tokens?`
-  (default false)."
+(defn- ^Encoding raw-encode
   ([^HuggingFaceTokenizer t ^String text]
-   (enc->map (.encode t text)))
+   (.encode t text))
   ([^HuggingFaceTokenizer t ^String text pair-or-opts]
    (if (map? pair-or-opts)
      (let [{:keys [add-special-tokens? with-overflowing-tokens?]
             :or {add-special-tokens? true with-overflowing-tokens? false}} pair-or-opts]
-       (enc->map (.encode t text (boolean add-special-tokens?)
-                          (boolean with-overflowing-tokens?))))
-     (enc->map (.encode t text ^String pair-or-opts))))
+       (.encode t text (boolean add-special-tokens?)
+                (boolean with-overflowing-tokens?)))
+     (.encode t text ^String pair-or-opts)))
   ([^HuggingFaceTokenizer t ^String text ^String text-pair
     {:keys [add-special-tokens? with-overflowing-tokens?]
      :or {add-special-tokens? true with-overflowing-tokens? false}}]
-   (enc->map (.encode t text text-pair (boolean add-special-tokens?)
-                      (boolean with-overflowing-tokens?)))))
+   (.encode t text text-pair (boolean add-special-tokens?)
+            (boolean with-overflowing-tokens?))))
+
+(defn encode
+  "Encode `text`, optionally paired with a second text, into a token-data map.
+  Opts: `:add-special-tokens?` (default true), `:with-overflowing-tokens?`
+  (default false)."
+  ([t text]
+   (enc->map (raw-encode t text)))
+  ([t text pair-or-opts]
+   (enc->map (raw-encode t text pair-or-opts)))
+  ([t text text-pair opts]
+   (enc->map (raw-encode t text text-pair opts))))
 
 (defn encode-pretokenized
   "Encode an already-split sequence of word strings, preserving native word IDs.
@@ -345,18 +353,24 @@
 
 (defn ids
   "Token ids for `text` (see `encode` for opts)."
-  ([t text] (:ids (encode t text)))
-  ([t text opts] (:ids (encode t text opts))))
+  ([t text]
+   (vec (.getIds ^Encoding (raw-encode t text))))
+  ([t text opts]
+   (vec (.getIds ^Encoding (raw-encode t text opts)))))
 
 (defn tokens
   "Token strings for `text` (see `encode` for opts)."
-  ([t text] (:tokens (encode t text)))
-  ([t text opts] (:tokens (encode t text opts))))
+  ([t text]
+   (vec (.getTokens ^Encoding (raw-encode t text))))
+  ([t text opts]
+   (vec (.getTokens ^Encoding (raw-encode t text opts)))))
 
 (defn count-tokens
   "Number of token ids `text` encodes to (see `encode` for opts)."
-  ([t text] (count (ids t text)))
-  ([t text opts] (count (ids t text opts))))
+  ([t text]
+   (alength (.getIds ^Encoding (raw-encode t text))))
+  ([t text opts]
+   (alength (.getIds ^Encoding (raw-encode t text opts)))))
 
 (defn decode
   "Decode a seq of token `id-seq` back to text. Opts: `:skip-special-tokens?` (default true)."
@@ -387,6 +401,19 @@
    (mapv enc->map (.batchEncode t ^java.util.List (vec texts)
                                (boolean add-special-tokens?)
                                (boolean with-overflowing-tokens?)))))
+
+(defn batch-count-tokens
+  "Token-id counts for `texts` via native batch encoding."
+  ([^HuggingFaceTokenizer t texts]
+   (mapv #(alength (.getIds ^Encoding %))
+         (.batchEncode t ^java.util.List (vec texts))))
+  ([^HuggingFaceTokenizer t texts
+    {:keys [add-special-tokens? with-overflowing-tokens?]
+     :or {add-special-tokens? true with-overflowing-tokens? false}}]
+   (mapv #(alength (.getIds ^Encoding %))
+         (.batchEncode t ^java.util.List (vec texts)
+                       (boolean add-special-tokens?)
+                       (boolean with-overflowing-tokens?)))))
 
 (defn batch-encode->ndlist
   "Encode `texts` directly to one batched DJL `NDList` owned by `manager`.
