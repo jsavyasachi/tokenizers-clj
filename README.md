@@ -26,13 +26,13 @@ and any other model that publishes a `tokenizer.json`.
 deps.edn:
 
 ```clojure
-net.clojars.savya/tokenizers-clj {:mvn/version "0.3.0"}
+net.clojars.savya/tokenizers-clj {:mvn/version "0.4.0"}
 ```
 
 Leiningen / Boot:
 
 ```clojure
-[net.clojars.savya/tokenizers-clj "0.3.0"]
+[net.clojars.savya/tokenizers-clj "0.4.0"]
 ```
 
 ## Usage
@@ -116,6 +116,26 @@ also accepts `:add-special-tokens?` and `:with-overflowing-tokens?`.
                              ["question 2" "answer 2"]])
   (tok/batch-decode t [[101 2034 102] [101 2117 102]]
                     {:skip-special-tokens? true}))
+```
+
+Count native batch results without building encode maps:
+
+```clojure
+(with-open [t (tok/from-pretrained "bert-base-uncased")]
+  (tok/batch-count-tokens t ["hello" "world"]))
+;=> [3 3]
+```
+
+Span helpers operate directly on an `encode` result:
+
+```clojure
+(with-open [t (tok/from-pretrained "bert-base-uncased")]
+  (let [enc (tok/encode t "unaffordable cat")]
+    [(tok/token->chars enc 2)
+     (tok/token->word enc 2)
+     (tok/char->token enc 3)
+     (tok/word->tokens enc 0)]))
+;=> [[3 5] 0 2 [1 2 3 4]]
 ```
 
 Batch encoding options are the same as `encode` options. `batch-decode` accepts
