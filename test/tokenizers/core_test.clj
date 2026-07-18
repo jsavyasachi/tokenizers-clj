@@ -360,3 +360,35 @@
                  (batch-count-tokens t texts
                                      {:add-special-tokens? false
                                       :with-overflowing-tokens? true}))))))))
+
+(deftest encoded-span-lookups
+  (let [token->chars (resolve 'tokenizers.core/token->chars)
+        token->word (resolve 'tokenizers.core/token->word)
+        char->token (resolve 'tokenizers.core/char->token)
+        word->tokens (resolve 'tokenizers.core/word->tokens)]
+    (is token->chars)
+    (is token->word)
+    (is char->token)
+    (is word->tokens)
+    (when (every? some? [token->chars token->word char->token word->tokens])
+      (with-open [t (tok/from-file fixture)]
+        (let [enc (tok/encode t "unaffordable cat")]
+          (is (= ["[CLS]" "una" "##ff" "##ord" "##able" "cat" "[SEP]"]
+                 (:tokens enc)))
+          (is (= [-1 0 0 0 0 1 -1] (:word-ids enc)))
+          (is (nil? (token->chars enc 0)))
+          (is (= [0 3] (token->chars enc 1)))
+          (is (= [8 12] (token->chars enc 4)))
+          (is (nil? (token->word enc 0)))
+          (is (= 0 (token->word enc 4)))
+          (is (= 1 (token->word enc 5)))
+          (is (nil? (token->word enc 6)))
+          (is (= 1 (char->token enc 0)))
+          (is (= 2 (char->token enc 3)))
+          (is (= 5 (char->token enc 13)))
+          (is (nil? (char->token enc 12)))
+          (is (nil? (char->token enc 16)))
+          (is (= [1 2 3 4] (word->tokens enc 0)))
+          (is (= [5] (word->tokens enc 1)))
+          (is (= [] (word->tokens enc -1)))
+          (is (= [] (word->tokens enc 2))))))))

@@ -321,6 +321,40 @@
   ([t text text-pair opts]
    (enc->map (raw-encode t text text-pair opts))))
 
+(defn token->chars
+  "Character span for `token-idx` in an `encode` result map, or nil."
+  [enc token-idx]
+  (get (:offsets enc) token-idx))
+
+(defn token->word
+  "Word index for `token-idx` in an `encode` result map, or nil."
+  [enc token-idx]
+  (let [word-id (get (:word-ids enc) token-idx -1)]
+    (when-not (= -1 word-id)
+      word-id)))
+
+(defn char->token
+  "Token index containing `char-idx` in an `encode` result map, or nil."
+  [enc char-idx]
+  (first
+   (keep-indexed
+    (fn [token-idx span]
+      (when (and span
+                 (<= (first span) char-idx)
+                 (< char-idx (second span)))
+        token-idx))
+    (:offsets enc))))
+
+(defn word->tokens
+  "Token indices for `word-id` in an `encode` result map."
+  [enc word-id]
+  (into []
+        (keep-indexed (fn [token-idx token-word-id]
+                        (when (and (not= -1 token-word-id)
+                                   (= word-id token-word-id))
+                          token-idx)))
+        (:word-ids enc)))
+
 (defn encode-pretokenized
   "Encode an already-split sequence of word strings, preserving native word IDs.
   Opts: `:add-special-tokens?` (default true), `:with-overflowing-tokens?`
