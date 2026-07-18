@@ -5,7 +5,8 @@
 
   A tokenizer holds a native handle: close it (`with-open` works) to free it."
   (:require [clojure.string :as str])
-  (:import [ai.djl.huggingface.tokenizers HuggingFaceTokenizer Encoding TokenizerConfig]
+  (:import [ai.djl.huggingface.tokenizers HuggingFaceTokenizer
+            HuggingFaceTokenizer$Builder Encoding TokenizerConfig]
            [ai.djl.huggingface.tokenizers.jni CharSpan]
            [java.io File InputStream]
            [java.net URI URLEncoder]
@@ -104,10 +105,10 @@
                [(if (keyword? key) (name key) (str key)) (str value)]))
         (merge (:options opts) (:raw-options opts))))
 
-(defn- constructor-options [opts]
+(defn- ^java.util.Map constructor-options [opts]
   (merge (djl-options opts) (raw-options opts)))
 
-(defn builder
+(defn ^HuggingFaceTokenizer$Builder builder
   "Create a DJL tokenizer builder configured from wrapper opts.
   Entries in `:options` or `:raw-options` pass through verbatim by DJL option
   name, such as `modelMaxLength`, `stripAccents`, and `addPrefixSpace`; keyword
@@ -122,7 +123,7 @@
        (.optManager builder manager))
      builder)))
 
-(defn- tokenizer-config [opts]
+(defn- ^TokenizerConfig tokenizer-config [opts]
   (some-> (:tokenizer-config opts) as-path TokenizerConfig/load))
 
 (defn from-file
@@ -175,7 +176,8 @@
     (let [temp (Files/createTempFile (.getParent target) ".tokenizer-" ".json"
                                      (make-array FileAttribute 0))]
       (try
-        (Files/write temp ^bytes (.body response) (make-array OpenOption 0))
+        (Files/write temp ^bytes (.body response)
+                     ^"[Ljava.nio.file.OpenOption;" (make-array OpenOption 0))
         (Files/move temp target
                     (into-array CopyOption [StandardCopyOption/REPLACE_EXISTING]))
         (finally
@@ -224,8 +226,8 @@
    (from-stream is {}))
   (^HuggingFaceTokenizer [^InputStream is opts]
    (assert-compatible-native-runtime!)
-   (let [options (constructor-options opts)]
-     (if-let [config (tokenizer-config opts)]
+   (let [^java.util.Map options (constructor-options opts)]
+     (if-let [^TokenizerConfig config (tokenizer-config opts)]
        (HuggingFaceTokenizer/newInstance is options config)
        (HuggingFaceTokenizer/newInstance is options)))))
 
