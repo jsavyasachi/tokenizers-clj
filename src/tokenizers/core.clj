@@ -358,7 +358,7 @@
         (:word-ids enc)))
 
 (defn encode-pretokenized
-  "Encode an already-split sequence of word strings, preserving native word IDs.
+  "Encode an already-split sequence of word strings. This keeps the native word ids.
   Opts: `:add-special-tokens?` (default true), `:with-overflowing-tokens?`
   (default false)."
   ([^HuggingFaceTokenizer t words]
@@ -416,8 +416,8 @@
    (.decode t (long-array id-seq) (boolean skip-special-tokens?))))
 
 (defn build-sentence
-  "Reconstruct a sentence from token strings, applying the tokenizer's native
-  token-joining rules. This is distinct from decoding token IDs."
+  "Reconstruct a sentence from token strings with the tokenizer's native
+  token-joining rules. This is different from a decode of token ids."
   [^HuggingFaceTokenizer t token-strings]
   (.buildSentence t ^java.util.List (vec token-strings)))
 

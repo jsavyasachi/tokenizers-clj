@@ -38,7 +38,7 @@
 (deftest count-tokens-and-special-tokens-toggle
   (with-open [t (tok/from-file fixture)]
     (is (= 6 (tok/count-tokens t "Hello, world!")))
-    (testing "dropping [CLS]/[SEP] removes two tokens"
+    (testing "removal of [CLS]/[SEP] gives two fewer tokens"
       (is (= 4 (tok/count-tokens t "Hello, world!" {:add-special-tokens? false})))
       (is (= [7592 1010 2088 999]
              (tok/ids t "Hello, world!" {:add-special-tokens? false}))))))
@@ -196,9 +196,10 @@
           (is (every? #(some #{1} (:sequence-ids %)) encs)))))))
 
 (deftest batch-encode-pads-to-longest
-  ;; DJL batchEncode pads every sequence to the batch's longest so the result is
-  ;; rectangular: both :ids are length 5 here. Real token counts live in :attention-mask
-  ;; (padding positions are 0). This is the key difference from (map encode texts).
+  ;; DJL batchEncode pads every sequence to the longest one in the batch, so the
+  ;; result is rectangular: both :ids are length 5 here. The real token counts are
+  ;; in :attention-mask (padding positions are 0). This is the key difference from
+  ;; (map encode texts).
   (with-open [t (tok/from-file fixture)]
     (let [encs (tok/batch-encode t ["hi" "hello there friend"])]
       (is (= 2 (count encs)))

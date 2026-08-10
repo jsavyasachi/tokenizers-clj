@@ -16,10 +16,11 @@ HuggingFace `tokenizer.json`, backed by the native Rust `tokenizers` library.
 <a href="https://huggingface.co/docs/tokenizers"><img src="https://img.shields.io/badge/HuggingFace%20Tokenizers-FFD21E?style=flat&logo=huggingface&logoColor=000" alt="HuggingFace Tokenizers" /></a>
 
 A thin Clojure wrapper over [DJL](https://djl.ai/)'s
-`ai.djl.huggingface/tokenizers`, which binds the same fast Rust
-[`tokenizers`](https://github.com/huggingface/tokenizers) that HuggingFace ships
-for Python. It gives you exact token counts and ids for BERT, GPT, Llama, Qwen,
-and any other model that publishes a `tokenizer.json`.
+`ai.djl.huggingface/tokenizers`. DJL binds the same Rust
+[`tokenizers`](https://github.com/huggingface/tokenizers) library that
+HuggingFace ships for Python. The wrapper gives you exact token counts and ids
+for BERT, GPT, Llama, Qwen, and any other model that publishes a
+`tokenizer.json`.
 
 ## Install
 
@@ -78,9 +79,9 @@ Leiningen / Boot:
 - `:tokenizer-config`: path, `File`, or `Path` to a `tokenizer_config.json`.
 
 `from-pretrained` also accepts `:revision`, `:auth-token`, `:cache-dir`, and
-`:local-only?` / `:offline?`. Supplying revision, cache, or offline options uses a
-revision-specific local cache; offline modes fail without making a network request
-when the tokenizer is absent.
+`:local-only?` / `:offline?`. If you supply a revision, cache, or offline option,
+the library uses a revision-specific local cache. In an offline mode the library
+fails without a network request when the tokenizer is absent.
 
 ```clojure
 (with-open [t (tok/from-pretrained
@@ -118,7 +119,7 @@ also accepts `:add-special-tokens?` and `:with-overflowing-tokens?`.
                     {:skip-special-tokens? true}))
 ```
 
-Count native batch results without building encode maps:
+Count native batch results without encode maps:
 
 ```clojure
 (with-open [t (tok/from-pretrained "bert-base-uncased")]
@@ -138,22 +139,22 @@ Span helpers operate directly on an `encode` result:
 ;=> [[3 5] 0 2 [1 2 3 4]]
 ```
 
-Batch encoding options are the same as `encode` options. `batch-decode` accepts
-`:skip-special-tokens?`, which defaults to true. Padding configured at construction
-can make batch results rectangular; real token counts are recoverable from each
+Batch encode options are the same as `encode` options. `batch-decode` accepts
+`:skip-special-tokens?`, which defaults to true. Padding set at construction can
+make batch results rectangular. You can get the real token counts from each
 `:attention-mask`.
 
 ## Requirements
 
 - JDK 21
-- **A JVM matching your CPU architecture.** DJL loads a native library for the
-  JVM's reported `os.arch`, so on Apple Silicon use an **arm64** JDK - an x86_64
-  JVM running under Rosetta fails to resolve the native tokenizer
-  (`Unexpected flavor: cpu`); check with
+- **A JVM that matches your CPU architecture.** DJL loads a native library for
+  the JVM's reported `os.arch`. On Apple Silicon, use an **arm64** JDK. An
+  x86_64 JVM under Rosetta cannot resolve the native tokenizer and fails with
+  `Unexpected flavor: cpu`. Check the JVM with
   `java -XshowSettings:properties -version 2>&1 | grep 'os.arch\|java.home'`.
-- Network access the first time DJL fetches the native library (cached
-  afterwards under `~/.djl.ai/`), and on `from-pretrained` to download the model
-  file
+- Network access the first time DJL gets the native library. DJL then caches it
+  under `~/.djl.ai/`. `from-pretrained` also needs network access to download
+  the model file.
 
 ## License
 
