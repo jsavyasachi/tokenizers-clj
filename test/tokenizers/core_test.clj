@@ -6,6 +6,7 @@
            [ai.djl.ndarray.types DataType]
            [com.sun.net.httpserver HttpHandler HttpServer]
            [java.net InetSocketAddress URI]
+           [java.time Duration]
            [java.nio.file Files OpenOption StandardCopyOption]
            [java.nio.file.attribute FileAttribute]))
 
@@ -291,6 +292,22 @@
     (when hub-uri
       (is (= "https://huggingface.co/acme/model/resolve/refs%2Fpr%2F7/tokenizer.json"
              (str (hub-uri "acme/model" "refs/pr/7")))))))
+
+(deftest hub-download-configures-connect-and-read-timeouts
+  (let [hub-download-timeout (resolve 'tokenizers.core/hub-download-timeout)
+        hub-http-client (resolve 'tokenizers.core/hub-http-client)
+        hub-request (resolve 'tokenizers.core/hub-request)
+        timeout-ms 123
+        timeout (Duration/ofMillis timeout-ms)]
+    (is hub-download-timeout)
+    (is hub-http-client)
+    (is hub-request)
+    (when (and hub-download-timeout hub-http-client hub-request)
+      (is (= (Duration/ofMillis 30000) (hub-download-timeout nil)))
+      (is (= timeout (hub-download-timeout timeout-ms)))
+      (is (= timeout (.orElse (.connectTimeout (hub-http-client timeout)) nil)))
+      (is (= timeout (.orElse (.timeout (hub-request (URI/create "http://localhost")
+                                                    nil timeout)) nil))))))
 
 (deftest hub-download-sends-auth-and-populates-cache
   (let [download-tokenizer! (resolve 'tokenizers.core/download-tokenizer!)

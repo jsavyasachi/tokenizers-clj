@@ -15,6 +15,7 @@
            [java.nio.charset StandardCharsets]
            [java.nio.file CopyOption Files LinkOption OpenOption Path StandardCopyOption]
            [java.nio.file.attribute FileAttribute]
+           [java.time Duration]
            [java.util Locale]
            [ai.djl.util PairList]))
 
@@ -159,15 +160,37 @@
       (.resolve ^String (encode-component revision))
       (.resolve "tokenizer.json")))
 
-(defn- download-tokenizer! [uri ^Path target auth-token]
+(def ^:private default-hub-download-timeout-ms 30000)
+
+(defn- hub-download-timeout [timeout-ms]
+  (let [timeout-ms (or timeout-ms default-hub-download-timeout-ms)]
+    (when-not (and (integer? timeout-ms) (pos? timeout-ms))
+      (throw (ex-info ":download-timeout-ms must be a positive integer"
+                      {:download-timeout-ms timeout-ms})))
+    (Duration/ofMillis timeout-ms)))
+
+(defn- hub-http-client [^Duration timeout]
+  (-> (HttpClient/newBuilder)
+      (.connectTimeout timeout)
+      (.followRedirects HttpClient$Redirect/ALWAYS)
+      (.build)))
+
+(defn- hub-request [uri auth-token ^Duration timeout]
+  (let [request-builder (doto (HttpRequest/newBuilder uri)
+                          (.GET)
+                          (.timeout timeout))]
+    (when auth-token
+      (.header request-builder "Authorization" (str "Bearer " auth-token)))
+    (.build request-builder)))
+
+(defn- download-tokenizer!
+  ([uri ^Path target auth-token]
+   (download-tokenizer! uri target auth-token nil))
+  ([uri ^Path target auth-token timeout-ms]
   (Files/createDirectories (.getParent target) (make-array FileAttribute 0))
-  (let [request-builder (doto (HttpRequest/newBuilder uri) (.GET))
-        _ (when auth-token
-            (.header request-builder "Authorization" (str "Bearer " auth-token)))
-        client (-> (HttpClient/newBuilder)
-                   (.followRedirects HttpClient$Redirect/ALWAYS)
-                   (.build))
-        response (.send client (.build request-builder)
+  (let [timeout (hub-download-timeout timeout-ms)
+        client (hub-http-client timeout)
+        response (.send client (hub-request uri auth-token timeout)
                         (HttpResponse$BodyHandlers/ofByteArray))
         status (.statusCode response)]
     (when-not (<= 200 status 299)
@@ -182,14 +205,15 @@
                     (into-array CopyOption [StandardCopyOption/REPLACE_EXISTING]))
         (finally
           (Files/deleteIfExists temp))))
-    target))
+    target)))
 
 (def ^:private hub-option-keys
-  #{:revision :auth-token :cache-dir :local-only? :local-only :offline? :offline})
+  #{:revision :auth-token :cache-dir :local-only? :local-only :offline? :offline
+    :download-timeout-ms})
 
 (defn- wrapper-managed-hub? [opts]
   (some #(contains? opts %) [:revision :cache-dir :local-only? :local-only
-                             :offline? :offline]))
+                             :offline? :offline :download-timeout-ms]))
 
 (defn- offline? [opts]
   (boolean (or (:local-only? opts) (:local-only opts)
@@ -197,7 +221,9 @@
 
 (defn from-pretrained
   "Tokenizer by HuggingFace Hub id. Options include `:revision`, `:auth-token`,
-  `:cache-dir`, and `:local-only?` / `:offline?`, plus constructor options."
+  `:cache-dir`, `:local-only?` / `:offline?`, and `:download-timeout-ms`.
+  Wrapper-managed Hub downloads use a 30,000 ms connect and read timeout by
+  default; `:download-timeout-ms` must be a positive integer."
   (^HuggingFaceTokenizer [^String id]
    (from-pretrained id {}))
   (^HuggingFaceTokenizer [^String id opts]
@@ -210,7 +236,8 @@
            (throw (ex-info (str "Tokenizer " id " at revision " revision
                                " was not found in the local cache")
                            {:id id :revision revision :cache-path (str path)}))
-           (download-tokenizer! (hub-uri id revision) path (:auth-token opts))))
+           (download-tokenizer! (hub-uri id revision) path (:auth-token opts)
+                                (:download-timeout-ms opts))))
      (from-file path (apply dissoc opts hub-option-keys)))
      (let [opts (cond-> opts
                   (:auth-token opts)
