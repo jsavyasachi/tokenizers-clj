@@ -18,7 +18,7 @@
            [java.util Locale]
            [ai.djl.util PairList]))
 
-(defn- ^Path as-path [x]
+(defn- as-path ^Path [x]
   (cond
     (instance? Path x) x
     (instance? File x) (.toPath ^File x)
@@ -105,25 +105,25 @@
                [(if (keyword? key) (name key) (str key)) (str value)]))
         (merge (:options opts) (:raw-options opts))))
 
-(defn- ^java.util.Map constructor-options [opts]
+(defn- constructor-options ^java.util.Map [opts]
   (merge (djl-options opts) (raw-options opts)))
 
-(defn ^HuggingFaceTokenizer$Builder builder
+(defn builder
   "Create a DJL tokenizer builder configured from wrapper opts.
   Entries in `:options` or `:raw-options` pass through verbatim by DJL option
   name, such as `modelMaxLength`, `stripAccents`, and `addPrefixSpace`; keyword
   keys are converted with `name`. Raw entries override translated wrapper opts.
   `:manager` attaches the built tokenizer to a caller-supplied `NDManager`."
-  ([]
+  (^HuggingFaceTokenizer$Builder []
    (HuggingFaceTokenizer/builder))
-  ([opts]
+  (^HuggingFaceTokenizer$Builder [opts]
    (let [builder (HuggingFaceTokenizer/builder)]
      (.configure builder (constructor-options opts))
      (when-let [manager (:manager opts)]
        (.optManager builder manager))
      builder)))
 
-(defn- ^TokenizerConfig tokenizer-config [opts]
+(defn- tokenizer-config ^TokenizerConfig [opts]
   (some-> (:tokenizer-config opts) as-path TokenizerConfig/load))
 
 (defn from-file
@@ -296,17 +296,17 @@
    :overflow (mapv enc->map (.getOverflowing e))
    :exceed-max-length? (.exceedMaxLength e)})
 
-(defn- ^Encoding raw-encode
-  ([^HuggingFaceTokenizer t ^String text]
+(defn- raw-encode
+  (^Encoding [^HuggingFaceTokenizer t ^String text]
    (.encode t text))
-  ([^HuggingFaceTokenizer t ^String text pair-or-opts]
+  (^Encoding [^HuggingFaceTokenizer t ^String text pair-or-opts]
    (if (map? pair-or-opts)
      (let [{:keys [add-special-tokens? with-overflowing-tokens?]
             :or {add-special-tokens? true with-overflowing-tokens? false}} pair-or-opts]
        (.encode t text (boolean add-special-tokens?)
                 (boolean with-overflowing-tokens?)))
      (.encode t text ^String pair-or-opts)))
-  ([^HuggingFaceTokenizer t ^String text ^String text-pair
+  (^Encoding [^HuggingFaceTokenizer t ^String text ^String text-pair
     {:keys [add-special-tokens? with-overflowing-tokens?]
      :or {add-special-tokens? true with-overflowing-tokens? false}}]
    (.encode t text text-pair (boolean add-special-tokens?)
