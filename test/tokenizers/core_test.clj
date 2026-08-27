@@ -1,6 +1,7 @@
 (ns tokenizers.core-test
   (:require [clojure.test :refer [deftest is testing]]
             [clojure.java.io :as io]
+            [clojure.string :as str]
             [tokenizers.core :as tok])
   (:import [ai.djl.ndarray NDList NDManager]
            [ai.djl.ndarray.types DataType]
@@ -263,9 +264,13 @@
   (let [cache (Files/createTempDirectory "tokenizers-clj-cache"
                                          (make-array FileAttribute 0))
         cached-dir (.resolve cache "acme%2Fmodel/abc123")
-        cached-tokenizer (.resolve cached-dir "tokenizer.json")]
+        cached-tokenizer (.resolve cached-dir "tokenizer.json")
+        cached-config (.resolve cached-dir "tokenizer_config.json")]
     (Files/createDirectories cached-dir (make-array FileAttribute 0))
     (Files/copy (.toPath fixture) cached-tokenizer
+                (into-array java.nio.file.CopyOption
+                            [StandardCopyOption/REPLACE_EXISTING]))
+    (Files/copy (.toPath config-fixture) cached-config
                 (into-array java.nio.file.CopyOption
                             [StandardCopyOption/REPLACE_EXISTING]))
     (with-open [t (tok/from-pretrained "acme/model"
@@ -278,7 +283,9 @@
                                        {:revision "abc123"
                                         :cache-dir cache
                                         :offline? true})]
-      (is (= [101 7592 102] (tok/ids t "hello"))))))
+      (is (= [101 7592 102] (tok/ids t "hello")))
+      (is (= 4 (tok/max-length t)))
+      (is (true? (:exceed-max-length? (tok/encode t "one two three")))))))
 
 (deftest from-pretrained-offline-requires-cached-revision
   (let [cache (Files/createTempDirectory "tokenizers-clj-empty-cache"
@@ -297,6 +304,42 @@
     (when hub-uri
       (is (= "https://huggingface.co/acme/model/resolve/refs%2Fpr%2F7/tokenizer.json"
              (str (hub-uri "acme/model" "refs/pr/7")))))))
+
+(deftest from-pretrained-downloads-and-applies-tokenizer-config
+  (let [hub-uri-fn (resolve 'tokenizers.core/hub-uri)
+        download-fn (resolve 'tokenizers.core/download-tokenizer!)
+        cache (Files/createTempDirectory "tokenizers-clj-hub-config"
+                                         (make-array FileAttribute 0))
+        downloaded (atom [])]
+    (is hub-uri-fn)
+    (is download-fn)
+    (when (and hub-uri-fn download-fn)
+      (with-redefs-fn {hub-uri-fn (fn
+                                   ([_ _]
+                                    (URI/create "https://example.test/tokenizer.json"))
+                                   ([_ _ filename]
+                                    (URI/create (str "https://example.test/" filename))))
+                       download-fn (fn [uri target _ _]
+                                     (let [filename (last (str/split (str uri) #"/"))]
+                                       (swap! downloaded conj filename)
+                                       (Files/createDirectories (.getParent target)
+                                                                (make-array FileAttribute 0))
+                                       (Files/copy
+                                        (.toPath (if (= "tokenizer_config.json" filename)
+                                                   config-fixture
+                                                   fixture))
+                                        target
+                                        (into-array java.nio.file.CopyOption
+                                                    [StandardCopyOption/REPLACE_EXISTING]))
+                                       target))}
+        (fn []
+          (with-open [t (tok/from-pretrained "acme/model"
+                                             {:revision "abc123"
+                                              :cache-dir cache})]
+            (is (= ["tokenizer.json" "tokenizer_config.json"] @downloaded))
+            (is (= 4 (tok/max-length t)))
+            (is (true? (:exceed-max-length?
+                        (tok/encode t "one two three"))))))))))
 
 (deftest hub-download-configures-connect-and-read-timeouts
   (let [hub-download-timeout (resolve 'tokenizers.core/hub-download-timeout)

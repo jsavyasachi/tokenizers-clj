@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Added
+
+- HuggingFace Hub loading now caches and applies `tokenizer_config.json` metadata
+  alongside `tokenizer.json`, including model max length and special tokens.
+
 ## [0.6.0] - 2026-08-27
 
 ### Added
