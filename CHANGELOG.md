@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Public `tokenize` helper for getting token strings directly from a tokenizer
+  without constructing a full encode result.
+
 ## [0.5.0] - 2026-08-17
 
 ### Fixed

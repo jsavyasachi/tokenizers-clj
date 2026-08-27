@@ -4,7 +4,7 @@
 [![cljdoc](https://cljdoc.org/badge/net.clojars.savya/tokenizers-clj)](https://cljdoc.org/d/net.clojars.savya/tokenizers-clj)
 [![test](https://github.com/jsavyasachi/tokenizers-clj/actions/workflows/test.yml/badge.svg)](https://github.com/jsavyasachi/tokenizers-clj/actions/workflows/test.yml)
 
-Idiomatic Clojure tokenization: encode, decode, and count tokens against any
+Idiomatic Clojure tokenization: tokenize, encode, decode, and count tokens against any
 HuggingFace `tokenizer.json`, backed by the native Rust `tokenizers` library.
 
 ## Stack
@@ -44,6 +44,10 @@ Leiningen / Boot:
 ;; From a local tokenizer.json ...
 (with-open [t (tok/from-file "bert-base-uncased/tokenizer.json")]
   (tok/count-tokens t "Hello, world!"))          ;=> 6
+
+;; Get token strings directly, without an encode result map:
+(with-open [t (tok/from-file "bert-base-uncased/tokenizer.json")]
+  (tok/tokenize t "Hello, world!"))              ;=> ["[CLS]" "hello" "," "world" "!" "[SEP]"]
 
 ;; ... or straight from the HuggingFace hub (downloads + caches once).
 (with-open [t (tok/from-pretrained "bert-base-uncased")]
