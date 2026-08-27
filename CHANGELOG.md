@@ -4,6 +4,13 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-27
+
+### Added
+
+- Token-budget text splitting and truncation helpers with native token IDs,
+  original-string character offsets, and explicit overflow metadata.
+
 ## [0.7.0] - 2026-08-27
 
 ### Added

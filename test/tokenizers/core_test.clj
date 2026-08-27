@@ -28,6 +28,40 @@
       (is (= [1 1 1 1 1 1] (:attention-mask enc)))
       (is (= 6 (count (:type-ids enc)))))))
 
+(deftest token-budget-split-and-truncate
+  (let [split tok/split-by-token-budget
+        truncate tok/truncate-by-token-budget]
+    (with-open [t (tok/from-file fixture)]
+      (let [chunks (split t "hello world again" 2)
+            first-chunk (truncate t "hello world again" 2)]
+        (is (= [[101 7592] [2088 2153] [102]] (mapv :ids chunks)))
+        (is (= [0 5] (:offset (first chunks))))
+        (is (= "hello" (:text (first chunks))))
+        (is (= [[0 5]] (subvec (:offsets (first chunks)) 1 2)))
+        (is (= 3 (count chunks)))
+        (is (= 0 (:chunk-index first-chunk)))
+        (is (= 3 (:chunk-count first-chunk)))
+        (is (= 3 (:overflow-token-count first-chunk)))
+        (is (= [2088 2153 102] (:overflow-token-ids first-chunk)))))))
+
+(deftest token-budget-special-token-accounting-and-unicode-offsets
+  (let [split tok/split-by-token-budget]
+    (with-open [t (tok/from-file fixture)]
+      (testing "special tokens count by default and can be excluded"
+        (is (= [[101] [7592] [2088] [2153] [102]]
+               (mapv :ids (split t "hello world again" 1))))
+        (is (= [[101 7592] [2088] [2153 102]]
+               (mapv :ids (split t "hello world again" 1
+                                  {:count-special-tokens? false})))))
+      (testing "offsets use the original Java character indexes"
+        (let [chunks (split t "hi 😀 world" 10
+                            {:add-special-tokens? false})
+              chunk (first chunks)]
+          (is (= "hi 😀 world" (:text chunk)))
+          (is (= [0 11] (:offset chunk)))
+          (is (= [[0 2] [3 5] [6 11]] (:offsets chunk)))
+          (is (= [101 7632] (take 2 (tok/ids t "hi 😀")))))))))
+
 (deftest encode-exposes-source-attribution-and-overflow-metadata
   (with-open [t (tok/from-file fixture)]
     (let [enc (tok/encode t "Hello, world!")]

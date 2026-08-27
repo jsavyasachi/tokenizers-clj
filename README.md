@@ -27,13 +27,13 @@ for BERT, GPT, Llama, Qwen, and any other model that publishes a
 deps.edn:
 
 ```clojure
-net.clojars.savya/tokenizers-clj {:mvn/version "0.7.0"}
+net.clojars.savya/tokenizers-clj {:mvn/version "0.8.0"}
 ```
 
 Leiningen / Boot:
 
 ```clojure
-[net.clojars.savya/tokenizers-clj "0.7.0"]
+[net.clojars.savya/tokenizers-clj "0.8.0"]
 ```
 
 ## Usage
@@ -149,6 +149,23 @@ Span helpers operate directly on an `encode` result:
      (tok/char->token enc 3)
      (tok/word->tokens enc 0)]))
 ;=> [[3 5] 0 2 [1 2 3 4]]
+```
+
+### Token budgets and text windows
+
+`split-by-token-budget` and `truncate-by-token-budget` measure text with the
+real tokenizer, then return encode-shaped chunks with `:ids`, `:tokens`,
+`:offsets`, `:text`, and `:offset`. Offsets are indexes into the original Java
+string (UTF-16), including correct conversion around supplementary characters.
+The budget includes special tokens by default; set `:count-special-tokens?`
+to false to exclude tokenizer-added special tokens while retaining them in the
+first/last chunk. Chunks expose `:overflow?`, `:overflow-token-count`, and
+`:overflow-token-ids`. `split-by-tokens` and `truncate-by-tokens` are aliases.
+
+```clojure
+(with-open [t (tok/from-pretrained "bert-base-uncased")]
+  (tok/split-by-token-budget t "A long passage" 128
+                              {:count-special-tokens? true}))
 ```
 
 Batch encode options are the same as `encode` options. `batch-decode` accepts

@@ -373,6 +373,117 @@
   ([t text text-pair opts]
    (enc->map (raw-encode t text text-pair opts))))
 
+(defn- validate-token-budget [token-budget]
+  (when-not (and (integer? token-budget) (pos? token-budget))
+    (throw (ex-info ":token-budget must be a positive integer"
+                    {:token-budget token-budget})))
+  token-budget)
+
+(defn- token-records [enc]
+  (mapv (fn [idx]
+          {:idx idx
+           :special? (= 1 (get (:special-tokens-mask enc) idx))})
+        (range (count (:ids enc)))))
+
+(defn- budget-groups [records token-budget count-special-tokens?]
+  (loop [remaining records
+         current []
+         groups []]
+    (if-let [record (first remaining)]
+      (let [next-current (conj current record)
+            weight (if (and (:special? record) (not count-special-tokens?)) 0 1)
+            current-weight (reduce + (map #(if (and (:special? %) (not count-special-tokens?))
+                                           0
+                                           1)
+                                          current))]
+        (if (and (seq current) (> (+ current-weight weight) token-budget))
+          (recur remaining [] (conj groups current))
+          (recur (next remaining) next-current groups)))
+      (cond-> groups
+        (seq current) (conj current)))))
+
+(defn- content-groups [records token-budget]
+  (->> records
+       (remove :special?)
+       (partition-all token-budget)
+       (mapv vec)))
+
+(defn- attach-special-tokens [records groups]
+  (let [prefix (take-while :special? records)
+        suffix (take-while :special? (reverse records))]
+    (if (seq groups)
+      (cond-> (mapv vec groups)
+        (seq prefix) (update 0 #(vec (concat prefix %)))
+        (seq suffix) (update (dec (count groups)) #(vec (concat % (reverse suffix)))))
+      (when (seq records)
+        [(vec records)]))))
+
+(defn- chunk-map [enc text records chunk-index chunk-count all-ids]
+  (let [indices (mapv :idx records)
+        offsets (mapv (fn [idx]
+                        (when-let [[start end] (get (:offsets enc) idx)]
+                          [(.offsetByCodePoints ^String text 0 (int start))
+                           (.offsetByCodePoints ^String text 0 (int end))]))
+                      indices)
+        present-offsets (keep identity offsets)
+        offset (when (seq present-offsets)
+                 [(ffirst present-offsets) (second (last present-offsets))])
+        overflow-token-ids (vec (drop (inc (apply max indices)) all-ids))]
+    (assoc (reduce (fn [m key]
+                     (assoc m key (mapv #(get-in enc [key %]) indices)))
+                   (assoc enc :offsets offsets)
+                   [:ids :tokens :type-ids :word-ids :attention-mask
+                    :special-tokens-mask :sequence-ids])
+           :text (if offset (subs text (first offset) (second offset)) "")
+           :offset offset
+           :char-offset offset
+           :chunk-index chunk-index
+           :chunk-count chunk-count
+           :overflow? (< chunk-index (dec chunk-count))
+           :overflow-token-count (count overflow-token-ids)
+           :overflow-token-ids overflow-token-ids)))
+
+(defn split-by-token-budget
+  "Split `text` into native-token windows of at most `token-budget` tokens.
+
+  Returns encode-shaped maps with `:text`, `:offset` (Java character indexes),
+  `:ids`, and overflow metadata. Special tokens count against the budget by
+  default. Set `:count-special-tokens?` to false to exclude them while keeping
+  tokenizer-added prefix/suffix specials in the first/last window. Other opts
+  are the `encode` options, notably `:add-special-tokens?`. DJL 0.36.0 has no
+  per-call budget API, so the full native encoding is measured before windows
+  are partitioned.
+  "
+  ([^HuggingFaceTokenizer t ^String text token-budget]
+   (split-by-token-budget t text token-budget {}))
+  ([^HuggingFaceTokenizer t ^String text token-budget opts]
+   (validate-token-budget token-budget)
+   (let [count-special-tokens? (get opts :count-special-tokens? true)
+         enc (encode t text (dissoc opts :count-special-tokens?))
+         records (token-records enc)
+         groups (if count-special-tokens?
+                  (budget-groups records token-budget count-special-tokens?)
+                  (attach-special-tokens records
+                                          (content-groups records token-budget)))]
+     (if (seq groups)
+       (mapv (fn [index group]
+               (chunk-map enc text group index (count groups) (:ids enc)))
+             (range)
+             groups)
+       []))))
+
+(defn truncate-by-token-budget
+  "Return the first `split-by-token-budget` window, including overflow metadata.
+  Returns nil when `text` produces no tokens. Special-token accounting and
+  encode options match `split-by-token-budget`."
+  ([^HuggingFaceTokenizer t ^String text token-budget]
+   (truncate-by-token-budget t text token-budget {}))
+  ([^HuggingFaceTokenizer t ^String text token-budget opts]
+   (first (split-by-token-budget t text token-budget opts))))
+
+(def split-by-tokens split-by-token-budget)
+(def truncate-by-tokens truncate-by-token-budget)
+
 (defn token->chars
   "Character span for `token-idx` in an `encode` result map, or nil."
   [enc token-idx]
