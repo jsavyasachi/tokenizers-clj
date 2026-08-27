@@ -428,6 +428,11 @@
   ([t text opts]
    (vec (.getTokens ^Encoding (raw-encode t text opts)))))
 
+(defn tokenize
+  "Token strings for `text` without constructing an encode result."
+  [^HuggingFaceTokenizer t ^String text]
+  (vec (.tokenize t text)))
+
 (defn count-tokens
   "Number of token ids `text` encodes to (see `encode` for opts)."
   ([t text]

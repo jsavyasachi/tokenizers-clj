@@ -44,6 +44,11 @@
       (is (= [7592 1010 2088 999]
              (tok/ids t "Hello, world!" {:add-special-tokens? false}))))))
 
+(deftest tokenize-returns-token-strings-directly
+  (with-open [t (tok/from-file fixture)]
+    (is (= ["[CLS]" "hello" "," "world" "!" "[SEP]"]
+           (tok/tokenize t "Hello, world!")))))
+
 (deftest configurable-tokenizer-construction
   (testing "truncation, stride, overflow, and padding"
     (with-open [t (tok/from-file fixture {:truncation :longest-first
