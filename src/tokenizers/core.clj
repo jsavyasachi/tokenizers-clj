@@ -145,20 +145,26 @@
 (defn- encode-component [value]
   (.replace (URLEncoder/encode (str value) StandardCharsets/UTF_8) "+" "%20"))
 
-(defn- hub-uri [id revision]
+(defn- hub-uri
+  ([id revision]
+   (hub-uri id revision "tokenizer.json"))
+  ([id revision filename]
   (URI/create
    (str "https://huggingface.co/"
         (str/replace (encode-component id) "%2F" "/")
-        "/resolve/" (encode-component revision) "/tokenizer.json")))
+        "/resolve/" (encode-component revision) "/" filename))))
 
-(defn- hub-cache-path [id revision cache-dir]
+(defn- hub-cache-path
+  ([id revision cache-dir]
+   (hub-cache-path id revision cache-dir "tokenizer.json"))
+  ([id revision cache-dir filename]
   (-> (as-path (or cache-dir
                    (str (System/getProperty "user.home")
                         File/separator ".cache" File/separator
                         "huggingface" File/separator "tokenizers-clj")))
       (.resolve ^String (encode-component id))
       (.resolve ^String (encode-component revision))
-      (.resolve "tokenizer.json")))
+      (.resolve filename))))
 
 (def ^:private default-hub-download-timeout-ms 30000)
 
@@ -222,6 +228,9 @@
 (defn from-pretrained
   "Tokenizer by HuggingFace Hub id. Options include `:revision`, `:auth-token`,
   `:cache-dir`, `:local-only?` / `:offline?`, and `:download-timeout-ms`.
+  Wrapper-managed Hub downloads cache both `tokenizer.json` and the optional
+  `tokenizer_config.json`; DJL applies the latter's model and special-token
+  metadata during construction.
   Wrapper-managed Hub downloads use a 30,000 ms connect and read timeout by
   default; `:download-timeout-ms` must be a positive integer."
   (^HuggingFaceTokenizer [^String id]
@@ -230,7 +239,9 @@
    (assert-compatible-native-runtime!)
    (if (wrapper-managed-hub? opts)
      (let [revision (str (or (:revision opts) "main"))
-           path (hub-cache-path id revision (:cache-dir opts))]
+           cache-dir (:cache-dir opts)
+           path (hub-cache-path id revision cache-dir)
+           config-path (hub-cache-path id revision cache-dir "tokenizer_config.json")]
        (when-not (Files/exists path (make-array LinkOption 0))
          (if (offline? opts)
            (throw (ex-info (str "Tokenizer " id " at revision " revision
@@ -238,7 +249,19 @@
                            {:id id :revision revision :cache-path (str path)}))
            (download-tokenizer! (hub-uri id revision) path (:auth-token opts)
                                 (:download-timeout-ms opts))))
-     (from-file path (apply dissoc opts hub-option-keys)))
+       (when (and (not (Files/exists config-path (make-array LinkOption 0)))
+                  (not (offline? opts)))
+         (try
+           (download-tokenizer! (hub-uri id revision "tokenizer_config.json")
+                                config-path (:auth-token opts)
+                                (:download-timeout-ms opts))
+           (catch clojure.lang.ExceptionInfo error
+             (when-not (= 404 (:status (ex-data error)))
+               (throw error)))))
+       (from-file path
+                  (cond-> (apply dissoc opts hub-option-keys)
+                    (Files/exists config-path (make-array LinkOption 0))
+                    (assoc :tokenizer-config config-path))))
      (let [opts (cond-> opts
                   (:auth-token opts)
                   (update :raw-options merge

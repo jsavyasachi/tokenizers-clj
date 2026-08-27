@@ -27,13 +27,13 @@ for BERT, GPT, Llama, Qwen, and any other model that publishes a
 deps.edn:
 
 ```clojure
-net.clojars.savya/tokenizers-clj {:mvn/version "0.6.0"}
+net.clojars.savya/tokenizers-clj {:mvn/version "0.7.0"}
 ```
 
 Leiningen / Boot:
 
 ```clojure
-[net.clojars.savya/tokenizers-clj "0.6.0"]
+[net.clojars.savya/tokenizers-clj "0.7.0"]
 ```
 
 ## Usage
@@ -49,7 +49,8 @@ Leiningen / Boot:
 (with-open [t (tok/from-file "bert-base-uncased/tokenizer.json")]
   (tok/tokenize t "Hello, world!"))              ;=> ["[CLS]" "hello" "," "world" "!" "[SEP]"]
 
-;; ... or straight from the HuggingFace hub (downloads + caches once).
+;; ... or straight from the HuggingFace hub (downloads + caches both tokenizer
+;; files once, including tokenizer_config.json when the model provides it).
 (with-open [t (tok/from-pretrained "bert-base-uncased")]
   (tok/encode t "Hello, world!"))
 ;=> {:ids [101 7592 1010 2088 999 102]
@@ -86,6 +87,13 @@ Leiningen / Boot:
 `:local-only?` / `:offline?`. If you supply a revision, cache, or offline option,
 the library uses a revision-specific local cache. In an offline mode the library
 fails without a network request when the tokenizer is absent.
+
+Hub loading also downloads `tokenizer_config.json` when available and passes it
+to DJL. Its `model_max_length` is reflected by `max-length`,
+`effective-config`, and `:exceed-max-length?`; BOS/EOS/UNK/PAD and other special
+token metadata is applied by DJL during tokenization and padding. A missing
+`tokenizer_config.json` remains compatible with repositories that publish only
+`tokenizer.json`.
 
 ```clojure
 (with-open [t (tok/from-pretrained
