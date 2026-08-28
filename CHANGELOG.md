@@ -4,6 +4,12 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Added
+
+- Hub cache downloads now enforce a maximum size, verify supplied SHA-256
+  checksums, use atomic writes with cross-process cache locks, and clean up
+  interrupted temporary files while preserving legacy and offline caches.
+
 ## [0.9.0] - 2026-08-27
 
 ### Added
