@@ -4,6 +4,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-08-28
+
 ### Added
 
 - Hub cache downloads now enforce a maximum size, verify supplied SHA-256

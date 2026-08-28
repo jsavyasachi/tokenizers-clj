@@ -27,13 +27,13 @@ for BERT, GPT, Llama, Qwen, and any other model that publishes a
 deps.edn:
 
 ```clojure
-net.clojars.savya/tokenizers-clj {:mvn/version "0.9.0"}
+net.clojars.savya/tokenizers-clj {:mvn/version "0.10.0"}
 ```
 
 Leiningen / Boot:
 
 ```clojure
-[net.clojars.savya/tokenizers-clj "0.9.0"]
+[net.clojars.savya/tokenizers-clj "0.10.0"]
 ```
 
 ## Usage
