@@ -11,6 +11,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 - Batched pretokenized encoding with native word IDs and per-item overflow data.
 - Public tokenizer configuration metadata exposes model limits, special tokens,
   tokenizer class, and normalization flags.
+- CI now exercises Linux, macOS arm64, and Windows native runtime loading on
+  JDK 17 and 21.
 
 ## [0.8.0] - 2026-08-27
 

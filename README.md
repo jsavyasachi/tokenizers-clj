@@ -175,7 +175,7 @@ make batch results rectangular. You can get the real token counts from each
 
 ## Requirements
 
-- JDK 21
+- JDK 17 or newer
 - **A JVM that matches your CPU architecture.** DJL loads a native library for
   the JVM's reported `os.arch`. On Apple Silicon, use an **arm64** JDK. An
   x86_64 JVM under Rosetta cannot resolve the native tokenizer and fails with
