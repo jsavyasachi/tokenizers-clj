@@ -13,6 +13,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
   tokenizer class, and normalization flags.
 - CI now exercises Linux, macOS arm64, and Windows native runtime loading on
   JDK 17 and 21.
+- README now includes GPT, Llama, Qwen, offline deployment, and NDList batch
+  inference examples with explicit special-token and attention-mask guidance.
 
 ## [0.8.0] - 2026-08-27
 
