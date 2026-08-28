@@ -124,8 +124,28 @@
        (.optManager builder manager))
      builder)))
 
-(defn- tokenizer-config ^TokenizerConfig [opts]
+(defn- load-tokenizer-config ^TokenizerConfig [opts]
   (some-> (:tokenizer-config opts) as-path TokenizerConfig/load))
+
+(defn tokenizer-config
+  "Load tokenizer configuration metadata from a `tokenizer_config.json` path.
+  Returns nil when `path` is nil and preserves optional metadata as nil."
+  [path]
+  (when path
+    (let [^TokenizerConfig config (TokenizerConfig/load (as-path path))]
+      {:model-max-length (.getModelMaxLength config)
+       :tokenizer-class (.getTokenizerClass config)
+       :bos-token (.getBosToken config)
+       :eos-token (.getEosToken config)
+       :unk-token (.getUnkToken config)
+       :sep-token (.getSepToken config)
+       :pad-token (.getPadToken config)
+       :cls-token (.getClsToken config)
+       :strip-accents? (.isStripAccents config)
+       :clean-up-tokenization-spaces? (.isCleanUpTokenizationSpaces config)
+       :add-prefix-space? (.isAddPrefixSpace config)
+       :has-explicit-strip-accents? (.hasExplicitStripAccents config)
+       :has-explicit-add-prefix-space? (.hasExplicitAddPrefixSpace config)})))
 
 (defn from-file
   "Tokenizer from a `tokenizer.json` (path string, `File`, or `Path`).
@@ -277,7 +297,7 @@
   (^HuggingFaceTokenizer [^InputStream is opts]
    (assert-compatible-native-runtime!)
    (let [^java.util.Map options (constructor-options opts)]
-     (if-let [^TokenizerConfig config (tokenizer-config opts)]
+     (if-let [^TokenizerConfig config (load-tokenizer-config opts)]
        (HuggingFaceTokenizer/newInstance is options config)
        (HuggingFaceTokenizer/newInstance is options)))))
 
@@ -531,6 +551,15 @@
                       (boolean add-special-tokens?)
                       (boolean with-overflowing-tokens?)))))
 
+(defn batch-encode-pretokenized
+  "Encode batches of already-split word strings while preserving native word ids.
+  DJL 0.36.0 exposes no batch pretokenized operation, so each item uses the
+  native pretokenized `encode` overload and retains its own overflow entries."
+  ([^HuggingFaceTokenizer t batches]
+   (mapv #(encode-pretokenized t %) batches))
+  ([^HuggingFaceTokenizer t batches opts]
+   (mapv #(encode-pretokenized t % opts) batches)))
+
 (defn encode->ndlist
   "Encode `text` directly to a DJL `NDList` owned by `manager`.
   Opts include the `encode` opts plus `:with-token-type-ids?` and `:int32?`
@@ -613,6 +642,32 @@
     {:keys [add-special-tokens? with-overflowing-tokens?]
      :or {add-special-tokens? true with-overflowing-tokens? false}}]
    (mapv #(alength (.getIds ^Encoding %))
+         (.batchEncode t ^java.util.List (vec texts)
+                       (boolean add-special-tokens?)
+                       (boolean with-overflowing-tokens?)))))
+
+(defn batch-ids
+  "Token ids for `texts` via one native batch encoding."
+  ([^HuggingFaceTokenizer t texts]
+   (mapv #(vec (.getIds ^Encoding %))
+         (.batchEncode t ^java.util.List (vec texts))))
+  ([^HuggingFaceTokenizer t texts
+    {:keys [add-special-tokens? with-overflowing-tokens?]
+     :or {add-special-tokens? true with-overflowing-tokens? false}}]
+   (mapv #(vec (.getIds ^Encoding %))
+         (.batchEncode t ^java.util.List (vec texts)
+                       (boolean add-special-tokens?)
+                       (boolean with-overflowing-tokens?)))))
+
+(defn batch-tokens
+  "Token strings for `texts` via one native batch encoding."
+  ([^HuggingFaceTokenizer t texts]
+   (mapv #(vec (.getTokens ^Encoding %))
+         (.batchEncode t ^java.util.List (vec texts))))
+  ([^HuggingFaceTokenizer t texts
+    {:keys [add-special-tokens? with-overflowing-tokens?]
+     :or {add-special-tokens? true with-overflowing-tokens? false}}]
+   (mapv #(vec (.getTokens ^Encoding %))
          (.batchEncode t ^java.util.List (vec texts)
                        (boolean add-special-tokens?)
                        (boolean with-overflowing-tokens?)))))

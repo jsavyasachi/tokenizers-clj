@@ -225,6 +225,53 @@
                (:ids (encode-pretokenized
                       t ["hello" "worlds"] {:add-special-tokens? false}))))))))
 
+(deftest batch-token-array-fast-paths-match-batch-encode
+  (let [batch-ids (resolve 'tokenizers.core/batch-ids)
+        batch-tokens (resolve 'tokenizers.core/batch-tokens)]
+    (is batch-ids)
+    (is batch-tokens)
+    (when (and batch-ids batch-tokens)
+      (with-open [t (tok/from-file fixture)]
+        (doseq [opts [{} {:add-special-tokens? false
+                          :with-overflowing-tokens? true}]]
+          (let [encs (tok/batch-encode t ["hi" "hello there friend"] opts)]
+            (is (= (mapv :ids encs) (batch-ids t ["hi" "hello there friend"] opts)))
+            (is (= (mapv :tokens encs)
+                   (batch-tokens t ["hi" "hello there friend"] opts)))))))))
+
+(deftest batch-pretokenized-encoding-preserves-word-ids-and-overflow
+  (let [batch-encode-pretokenized (resolve 'tokenizers.core/batch-encode-pretokenized)]
+    (is batch-encode-pretokenized)
+    (when batch-encode-pretokenized
+      (with-open [t (tok/from-file fixture {:truncation :longest-first
+                                            :max-length 4
+                                            :with-overflowing-tokens? true})]
+        (let [encs (batch-encode-pretokenized
+                    t [["hello" "world" "again"] ["goodbye" "friend"]])]
+          (is (= 2 (count encs)))
+          (is (= [-1 0 1 -1] (:word-ids (first encs))))
+          (is (seq (:overflow (first encs))))
+          (is (= [-1 0 1 -1] (:word-ids (second encs)))))))))
+
+(deftest tokenizer-config-exposes-metadata
+  (let [config (resolve 'tokenizers.core/tokenizer-config)]
+    (is config)
+    (when config
+      (is (= {:model-max-length 4
+              :tokenizer-class nil
+              :bos-token nil
+              :eos-token nil
+              :unk-token "[UNK]"
+              :sep-token "[SEP]"
+              :pad-token "[PAD]"
+              :cls-token "[CLS]"
+              :strip-accents? false
+              :clean-up-tokenization-spaces? false
+              :add-prefix-space? false
+              :has-explicit-strip-accents? false
+              :has-explicit-add-prefix-space? false}
+             (config config-fixture))))))
+
 (deftest paired-batch-encode
   (let [batch-encode-pairs (resolve 'tokenizers.core/batch-encode-pairs)]
     (is batch-encode-pairs)

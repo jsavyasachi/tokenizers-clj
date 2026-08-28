@@ -173,9 +173,56 @@ Batch encode options are the same as `encode` options. `batch-decode` accepts
 make batch results rectangular. You can get the real token counts from each
 `:attention-mask`.
 
+### Production patterns
+
+Decoder-only tokenizers usually do not add BERT-style framing by default. Check
+the model's tokenizer configuration and make the choice explicit:
+
+```clojure
+;; GPT-2: raw text commonly needs no BOS/EOS framing.
+(with-open [t (tok/from-pretrained "gpt2")]
+  (tok/ids t "Complete this" {:add-special-tokens? false}))
+
+;; Llama and Qwen deployments often require BOS/EOS according to the model
+;; chat template. Use the published tokenizer.json/config as the source of truth.
+(with-open [t (tok/from-pretrained "meta-llama/Llama-3.2-1B")]
+  (tok/encode t "Answer briefly" {:add-special-tokens? true}))
+(with-open [t (tok/from-pretrained "Qwen/Qwen2.5-0.5B")]
+  (tok/encode t "Answer briefly" {:add-special-tokens? true}))
+```
+
+For offline deployment, download both tokenizer files during image building and
+point `:cache-dir` at the copied cache. Pin the revision and require offline
+loading at runtime so startup cannot silently reach the network:
+
+```clojure
+(def tokenizer
+  (tok/from-pretrained
+   "bert-base-uncased"
+   {:revision "<commit-sha>"
+    :cache-dir "/opt/models/tokenizers"
+    :offline? true
+    :padding :max-length
+    :max-length 128}))
+```
+
+For DJL inference, keep the tokenizer and manager lifecycle together. Batch
+padding makes each row rectangular; padded positions have attention-mask `0`,
+so the model should receive the mask rather than treating padding as content:
+
+```clojure
+(with-open [manager (NDManager/newBaseManager)
+            t (tok/from-pretrained "bert-base-uncased")
+            inputs (tok/batch-encode->ndlist
+                    t ["short input" "a longer input sequence"] manager)]
+  ;; inputs contains input ids and attention mask (plus token type ids when
+  ;; :with-token-type-ids? is true); pass it directly to Predictor/Block.
+  (.forward block inputs))
+```
+
 ## Requirements
 
-- JDK 21
+- JDK 17 or newer
 - **A JVM that matches your CPU architecture.** DJL loads a native library for
   the JVM's reported `os.arch`. On Apple Silicon, use an **arm64** JDK. An
   x86_64 JVM under Rosetta cannot resolve the native tokenizer and fails with
