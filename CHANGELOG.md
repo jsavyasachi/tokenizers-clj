@@ -8,6 +8,7 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 - Native batch `batch-ids` and `batch-tokens` fast paths that avoid constructing
   full encode result maps.
+- Batched pretokenized encoding with native word IDs and per-item overflow data.
 
 ## [0.8.0] - 2026-08-27
 

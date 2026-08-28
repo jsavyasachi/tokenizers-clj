@@ -531,6 +531,15 @@
                       (boolean add-special-tokens?)
                       (boolean with-overflowing-tokens?)))))
 
+(defn batch-encode-pretokenized
+  "Encode batches of already-split word strings while preserving native word ids.
+  DJL 0.36.0 exposes no batch pretokenized operation, so each item uses the
+  native pretokenized `encode` overload and retains its own overflow entries."
+  ([^HuggingFaceTokenizer t batches]
+   (mapv #(encode-pretokenized t %) batches))
+  ([^HuggingFaceTokenizer t batches opts]
+   (mapv #(encode-pretokenized t % opts) batches)))
+
 (defn encode->ndlist
   "Encode `text` directly to a DJL `NDList` owned by `manager`.
   Opts include the `encode` opts plus `:with-token-type-ids?` and `:int32?`
@@ -626,6 +635,19 @@
     {:keys [add-special-tokens? with-overflowing-tokens?]
      :or {add-special-tokens? true with-overflowing-tokens? false}}]
    (mapv #(vec (.getIds ^Encoding %))
+         (.batchEncode t ^java.util.List (vec texts)
+                       (boolean add-special-tokens?)
+                       (boolean with-overflowing-tokens?)))))
+
+(defn batch-tokens
+  "Token strings for `texts` via one native batch encoding."
+  ([^HuggingFaceTokenizer t texts]
+   (mapv #(vec (.getTokens ^Encoding %))
+         (.batchEncode t ^java.util.List (vec texts))))
+  ([^HuggingFaceTokenizer t texts
+    {:keys [add-special-tokens? with-overflowing-tokens?]
+     :or {add-special-tokens? true with-overflowing-tokens? false}}]
+   (mapv #(vec (.getTokens ^Encoding %))
          (.batchEncode t ^java.util.List (vec texts)
                        (boolean add-special-tokens?)
                        (boolean with-overflowing-tokens?)))))
