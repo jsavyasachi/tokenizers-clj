@@ -617,6 +617,19 @@
                        (boolean add-special-tokens?)
                        (boolean with-overflowing-tokens?)))))
 
+(defn batch-ids
+  "Token ids for `texts` via one native batch encoding."
+  ([^HuggingFaceTokenizer t texts]
+   (mapv #(vec (.getIds ^Encoding %))
+         (.batchEncode t ^java.util.List (vec texts))))
+  ([^HuggingFaceTokenizer t texts
+    {:keys [add-special-tokens? with-overflowing-tokens?]
+     :or {add-special-tokens? true with-overflowing-tokens? false}}]
+   (mapv #(vec (.getIds ^Encoding %))
+         (.batchEncode t ^java.util.List (vec texts)
+                       (boolean add-special-tokens?)
+                       (boolean with-overflowing-tokens?)))))
+
 (defn batch-encode->ndlist
   "Encode `texts` directly to one batched DJL `NDList` owned by `manager`.
   Opts include the `batch-encode` opts plus `:with-token-type-ids?` and

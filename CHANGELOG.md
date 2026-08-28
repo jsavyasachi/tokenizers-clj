@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Added
+
+- Native batch `batch-ids` and `batch-tokens` fast paths that avoid constructing
+  full encode result maps.
+
 ## [0.8.0] - 2026-08-27
 
 ### Added

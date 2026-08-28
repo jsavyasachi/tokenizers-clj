@@ -225,6 +225,16 @@
                (:ids (encode-pretokenized
                       t ["hello" "worlds"] {:add-special-tokens? false}))))))))
 
+(deftest batch-token-array-fast-paths-match-batch-encode
+  (let [batch-ids (resolve 'tokenizers.core/batch-ids)]
+    (is batch-ids)
+    (when batch-ids
+      (with-open [t (tok/from-file fixture)]
+        (doseq [opts [{} {:add-special-tokens? false
+                          :with-overflowing-tokens? true}]]
+          (let [encs (tok/batch-encode t ["hi" "hello there friend"] opts)]
+            (is (= (mapv :ids encs) (batch-ids t ["hi" "hello there friend"] opts)))))))))
+
 (deftest paired-batch-encode
   (let [batch-encode-pairs (resolve 'tokenizers.core/batch-encode-pairs)]
     (is batch-encode-pairs)
