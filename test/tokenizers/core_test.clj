@@ -253,6 +253,25 @@
           (is (seq (:overflow (first encs))))
           (is (= [-1 0 1 -1] (:word-ids (second encs)))))))))
 
+(deftest tokenizer-config-exposes-metadata
+  (let [config (resolve 'tokenizers.core/tokenizer-config)]
+    (is config)
+    (when config
+      (is (= {:model-max-length 4
+              :tokenizer-class nil
+              :bos-token nil
+              :eos-token nil
+              :unk-token "[UNK]"
+              :sep-token "[SEP]"
+              :pad-token "[PAD]"
+              :cls-token "[CLS]"
+              :strip-accents? false
+              :clean-up-tokenization-spaces? false
+              :add-prefix-space? false
+              :has-explicit-strip-accents? false
+              :has-explicit-add-prefix-space? false}
+             (config config-fixture))))))
+
 (deftest paired-batch-encode
   (let [batch-encode-pairs (resolve 'tokenizers.core/batch-encode-pairs)]
     (is batch-encode-pairs)

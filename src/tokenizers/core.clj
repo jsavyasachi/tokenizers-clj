@@ -124,8 +124,28 @@
        (.optManager builder manager))
      builder)))
 
-(defn- tokenizer-config ^TokenizerConfig [opts]
+(defn- load-tokenizer-config ^TokenizerConfig [opts]
   (some-> (:tokenizer-config opts) as-path TokenizerConfig/load))
+
+(defn tokenizer-config
+  "Load tokenizer configuration metadata from a `tokenizer_config.json` path.
+  Returns nil when `path` is nil and preserves optional metadata as nil."
+  [path]
+  (when path
+    (let [^TokenizerConfig config (TokenizerConfig/load (as-path path))]
+      {:model-max-length (.getModelMaxLength config)
+       :tokenizer-class (.getTokenizerClass config)
+       :bos-token (.getBosToken config)
+       :eos-token (.getEosToken config)
+       :unk-token (.getUnkToken config)
+       :sep-token (.getSepToken config)
+       :pad-token (.getPadToken config)
+       :cls-token (.getClsToken config)
+       :strip-accents? (.isStripAccents config)
+       :clean-up-tokenization-spaces? (.isCleanUpTokenizationSpaces config)
+       :add-prefix-space? (.isAddPrefixSpace config)
+       :has-explicit-strip-accents? (.hasExplicitStripAccents config)
+       :has-explicit-add-prefix-space? (.hasExplicitAddPrefixSpace config)})))
 
 (defn from-file
   "Tokenizer from a `tokenizer.json` (path string, `File`, or `Path`).
@@ -277,7 +297,7 @@
   (^HuggingFaceTokenizer [^InputStream is opts]
    (assert-compatible-native-runtime!)
    (let [^java.util.Map options (constructor-options opts)]
-     (if-let [^TokenizerConfig config (tokenizer-config opts)]
+     (if-let [^TokenizerConfig config (load-tokenizer-config opts)]
        (HuggingFaceTokenizer/newInstance is options config)
        (HuggingFaceTokenizer/newInstance is options)))))
 
