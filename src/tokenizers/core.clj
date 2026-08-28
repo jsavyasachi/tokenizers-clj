@@ -13,8 +13,11 @@
            [java.net.http HttpClient HttpClient$Redirect HttpRequest
             HttpResponse$BodyHandlers]
            [java.nio.charset StandardCharsets]
-           [java.nio.file CopyOption Files LinkOption OpenOption Path StandardCopyOption]
+           [java.nio.file CopyOption Files LinkOption OpenOption Path
+            StandardCopyOption StandardOpenOption]
+           [java.nio.channels FileChannel]
            [java.nio.file.attribute FileAttribute]
+           [java.security MessageDigest]
            [java.time Duration]
            [java.util Locale]
            [ai.djl.util PairList]))
@@ -187,6 +190,8 @@
       (.resolve filename))))
 
 (def ^:private default-hub-download-timeout-ms 30000)
+(def ^:private default-hub-max-download-bytes (* 100 1024 1024))
+(defonce ^:private hub-cache-locks (atom {}))
 
 (defn- hub-download-timeout [timeout-ms]
   (let [timeout-ms (or timeout-ms default-hub-download-timeout-ms)]
@@ -209,37 +214,139 @@
       (.header request-builder "Authorization" (str "Bearer " auth-token)))
     (.build request-builder)))
 
+(defn- hub-max-download-bytes [max-bytes]
+  (let [max-bytes (or max-bytes default-hub-max-download-bytes)]
+    (when-not (and (integer? max-bytes) (pos? max-bytes))
+      (throw (ex-info ":max-download-bytes must be a positive integer"
+                      {:max-download-bytes max-bytes})))
+    max-bytes))
+
+(defn- checksum-header [response]
+  (some->> ["x-checksum-sha256" "x-linked-etag" "etag"]
+           (some (fn [header]
+                   (let [value (.firstValue (.headers response) header)]
+                     (when (.isPresent value)
+                       (let [value (str/replace (.get value) #"^\"|\"$" "")]
+                         (when (re-matches #"(?i)[0-9a-f]{64}" value)
+                           (str/lower-case value)))))))))
+
+(defn- bytes->sha256 [^bytes bytes]
+  (format "%064x" (java.math.BigInteger. 1
+                                      (.digest (MessageDigest/getInstance "SHA-256") bytes))))
+
+(defn- checksum-path ^Path [^Path target]
+  (.resolveSibling target (str (.getFileName target) ".sha256")))
+
+(defn- cached-checksum-valid? [^Path target]
+  (let [metadata (checksum-path target)]
+    (if-not (Files/exists metadata (make-array LinkOption 0))
+      true
+      (let [expected (str/trim (slurp (str metadata)))]
+        (and (re-matches #"(?i)[0-9a-f]{64}" expected)
+             (= (str/lower-case expected)
+                (bytes->sha256 (Files/readAllBytes target))))))))
+
+(defn- remove-stale-downloads! [^Path directory]
+  (when (Files/exists directory (make-array LinkOption 0))
+    (with-open [entries (Files/list directory)]
+      (doseq [entry (iterator-seq (.iterator entries))]
+        (when (and (Files/isRegularFile entry (make-array LinkOption 0))
+                   (re-find #"^\.tokenizer-" (str (.getFileName entry))))
+          (Files/deleteIfExists entry))))))
+
+(defn- with-hub-cache-lock [^Path target f]
+  (let [lock-path (.resolveSibling target (str (.getFileName target) ".lock"))]
+    (Files/createDirectories (.getParent lock-path) (make-array FileAttribute 0))
+    (let [key (str lock-path)
+          lock-object (get (swap! hub-cache-locks
+                                  #(if (contains? % key) %
+                                       (assoc % key (Object.)))) key)]
+      (locking lock-object
+      (with-open [channel (FileChannel/open lock-path
+                                            (into-array StandardOpenOption
+                                                        [StandardOpenOption/CREATE
+                                                         StandardOpenOption/WRITE]))
+                  _lock (.lock channel)]
+        (remove-stale-downloads! (.getParent target))
+        (f))))))
+
+(defn- write-checksum! [^Path target checksum]
+  (when checksum
+    (let [metadata (checksum-path target)
+          temp (Files/createTempFile (.getParent target) ".tokenizer-checksum-" ".tmp"
+                                      (make-array FileAttribute 0))]
+      (try
+        (Files/write temp (.getBytes (str checksum "\n") StandardCharsets/UTF_8)
+                     (into-array OpenOption [StandardOpenOption/TRUNCATE_EXISTING]))
+        (Files/move temp metadata
+                    (into-array CopyOption [StandardCopyOption/ATOMIC_MOVE
+                                            StandardCopyOption/REPLACE_EXISTING]))
+        (finally
+          (Files/deleteIfExists temp))))))
+
+(declare download-tokenizer!)
+
+(defn- download-with-options! [uri target auth-token timeout-ms max-bytes]
+  (if (some? max-bytes)
+    (download-tokenizer! uri target auth-token timeout-ms max-bytes)
+    (download-tokenizer! uri target auth-token timeout-ms)))
+
 (defn- download-tokenizer!
   ([uri ^Path target auth-token]
    (download-tokenizer! uri target auth-token nil))
   ([uri ^Path target auth-token timeout-ms]
-  (Files/createDirectories (.getParent target) (make-array FileAttribute 0))
-  (let [timeout (hub-download-timeout timeout-ms)
+   (download-tokenizer! uri target auth-token timeout-ms nil))
+  ([uri ^Path target auth-token timeout-ms max-bytes]
+  (let [max-bytes (hub-max-download-bytes max-bytes)]
+    (Files/createDirectories (.getParent target) (make-array FileAttribute 0))
+    (remove-stale-downloads! (.getParent target))
+    (let [timeout (hub-download-timeout timeout-ms)
         client (hub-http-client timeout)
         response (.send client (hub-request uri auth-token timeout)
-                        (HttpResponse$BodyHandlers/ofByteArray))
+                        (HttpResponse$BodyHandlers/ofInputStream))
         status (.statusCode response)]
-    (when-not (<= 200 status 299)
-      (throw (ex-info (str "HuggingFace Hub returned HTTP " status " for " uri)
-                      {:status status :uri (str uri)})))
-    (let [temp (Files/createTempFile (.getParent target) ".tokenizer-" ".json"
-                                     (make-array FileAttribute 0))]
-      (try
-        (Files/write temp ^bytes (.body response)
-                     ^"[Ljava.nio.file.OpenOption;" (make-array OpenOption 0))
-        (Files/move temp target
-                    (into-array CopyOption [StandardCopyOption/REPLACE_EXISTING]))
-        (finally
-          (Files/deleteIfExists temp))))
-    target)))
+      (when-not (<= 200 status 299)
+        (throw (ex-info (str "HuggingFace Hub returned HTTP " status " for " uri)
+                        {:status status :uri (str uri)})))
+      (let [temp (Files/createTempFile (.getParent target) ".tokenizer-" ".json"
+                                       (make-array FileAttribute 0))
+            digest (MessageDigest/getInstance "SHA-256")]
+        (try
+          (with-open [in (.body response)
+                      out (Files/newOutputStream temp (into-array OpenOption
+                                                                  [StandardOpenOption/TRUNCATE_EXISTING]))]
+            (let [buffer (byte-array 8192)]
+              (loop [total 0]
+                (let [read (.read in buffer)]
+                  (when (pos? read)
+                    (let [next-total (+ total read)]
+                      (when (> next-total max-bytes)
+                        (throw (ex-info "maximum download size exceeded"
+                                        {:max-download-bytes max-bytes :uri (str uri)})))
+                      (.update digest buffer 0 read)
+                      (.write out buffer 0 read)
+                      (recur next-total)))))))
+          (let [actual (format "%064x" (java.math.BigInteger. 1 (.digest digest)))
+                expected (checksum-header response)]
+            (when (and expected (not= expected actual))
+              (throw (ex-info "Hub checksum verification failed"
+                              {:expected expected :actual actual :uri (str uri)})))
+            (Files/move temp target
+                        (into-array CopyOption [StandardCopyOption/ATOMIC_MOVE
+                                                StandardCopyOption/REPLACE_EXISTING]))
+            (write-checksum! target expected))
+          (finally
+            (Files/deleteIfExists temp))))
+      target))))
 
 (def ^:private hub-option-keys
   #{:revision :auth-token :cache-dir :local-only? :local-only :offline? :offline
-    :download-timeout-ms})
+    :download-timeout-ms :max-download-bytes})
 
 (defn- wrapper-managed-hub? [opts]
   (some #(contains? opts %) [:revision :cache-dir :local-only? :local-only
-                             :offline? :offline :download-timeout-ms]))
+                             :offline? :offline :download-timeout-ms
+                             :max-download-bytes]))
 
 (defn- offline? [opts]
   (boolean (or (:local-only? opts) (:local-only opts)
@@ -248,6 +355,7 @@
 (defn from-pretrained
   "Tokenizer by HuggingFace Hub id. Options include `:revision`, `:auth-token`,
   `:cache-dir`, `:local-only?` / `:offline?`, and `:download-timeout-ms`.
+  `:max-download-bytes` limits each Hub response (100 MiB by default).
   Wrapper-managed Hub downloads cache both `tokenizer.json` and the optional
   `tokenizer_config.json`; DJL applies the latter's model and special-token
   metadata during construction.
@@ -262,26 +370,45 @@
            cache-dir (:cache-dir opts)
            path (hub-cache-path id revision cache-dir)
            config-path (hub-cache-path id revision cache-dir "tokenizer_config.json")]
-       (when-not (Files/exists path (make-array LinkOption 0))
-         (if (offline? opts)
-           (throw (ex-info (str "Tokenizer " id " at revision " revision
-                               " was not found in the local cache")
-                           {:id id :revision revision :cache-path (str path)}))
-           (download-tokenizer! (hub-uri id revision) path (:auth-token opts)
-                                (:download-timeout-ms opts))))
-       (when (and (not (Files/exists config-path (make-array LinkOption 0)))
-                  (not (offline? opts)))
-         (try
-           (download-tokenizer! (hub-uri id revision "tokenizer_config.json")
-                                config-path (:auth-token opts)
-                                (:download-timeout-ms opts))
-           (catch clojure.lang.ExceptionInfo error
-             (when-not (= 404 (:status (ex-data error)))
-               (throw error)))))
-       (from-file path
-                  (cond-> (apply dissoc opts hub-option-keys)
-                    (Files/exists config-path (make-array LinkOption 0))
-                    (assoc :tokenizer-config config-path))))
+       (with-hub-cache-lock
+        path
+        (fn []
+          (let [cached? (Files/exists path (make-array LinkOption 0))]
+            (when (and cached? (not (cached-checksum-valid? path)))
+              (if (offline? opts)
+                (throw (ex-info "Cached tokenizer checksum verification failed"
+                                {:id id :revision revision :cache-path (str path)}))
+                (do (Files/deleteIfExists path)
+                    (Files/deleteIfExists (checksum-path path)))))
+            (when-not (Files/exists path (make-array LinkOption 0))
+              (if (offline? opts)
+                (throw (ex-info (str "Tokenizer " id " at revision " revision
+                                    " was not found in the local cache")
+                                {:id id :revision revision :cache-path (str path)}))
+                (download-with-options! (hub-uri id revision) path (:auth-token opts)
+                                        (:download-timeout-ms opts)
+                                        (:max-download-bytes opts))))
+            (when (and (Files/exists config-path (make-array LinkOption 0))
+                       (not (cached-checksum-valid? config-path)))
+              (if (offline? opts)
+                (throw (ex-info "Cached tokenizer config checksum verification failed"
+                                {:id id :revision revision :cache-path (str config-path)}))
+                (do (Files/deleteIfExists config-path)
+                    (Files/deleteIfExists (checksum-path config-path)))))
+            (when (and (not (Files/exists config-path (make-array LinkOption 0)))
+                       (not (offline? opts)))
+              (try
+                (download-with-options! (hub-uri id revision "tokenizer_config.json")
+                                        config-path (:auth-token opts)
+                                        (:download-timeout-ms opts)
+                                        (:max-download-bytes opts))
+                (catch clojure.lang.ExceptionInfo error
+                  (when-not (= 404 (:status (ex-data error)))
+                    (throw error)))))
+            (from-file path
+                       (cond-> (apply dissoc opts hub-option-keys)
+                         (Files/exists config-path (make-array LinkOption 0))
+                         (assoc :tokenizer-config config-path)))))))
      (let [opts (cond-> opts
                   (:auth-token opts)
                   (update :raw-options merge

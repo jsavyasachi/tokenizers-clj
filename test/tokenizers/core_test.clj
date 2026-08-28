@@ -7,6 +7,8 @@
            [ai.djl.ndarray.types DataType]
            [com.sun.net.httpserver HttpHandler HttpServer]
            [java.net InetSocketAddress URI]
+           [java.math BigInteger]
+           [java.security MessageDigest]
            [java.time Duration]
            [java.nio.file Files OpenOption StandardCopyOption]
            [java.nio.file.attribute FileAttribute]))
@@ -466,6 +468,96 @@
         (is (= (seq body) (seq (Files/readAllBytes target)))))
       (finally
         (.stop server 0)))))
+
+(deftest hub-download-enforces-maximum-size-and-cleans-temp-files
+  (let [download-tokenizer! (resolve 'tokenizers.core/download-tokenizer!)
+        server (HttpServer/create (InetSocketAddress. 0) 0)
+        target-dir (Files/createTempDirectory "tokenizers-clj-size"
+                                              (make-array FileAttribute 0))
+        target (.resolve target-dir "tokenizer.json")
+        body (.getBytes "0123456789" "UTF-8")]
+    (is download-tokenizer!)
+    (.createContext
+     server "/tokenizer.json"
+     (reify HttpHandler
+       (handle [_ exchange]
+         (.sendResponseHeaders exchange 200 (alength body))
+         (with-open [out (.getResponseBody exchange)]
+           (.write out body)))))
+    (.start server)
+    (try
+      (is (thrown-with-msg?
+           clojure.lang.ExceptionInfo
+           #"maximum download size"
+           (download-tokenizer!
+            (URI/create (str "http://127.0.0.1:" (.getPort (.getAddress server))
+                             "/tokenizer.json"))
+            target nil 30000 5)))
+      (is (not (Files/exists target (make-array java.nio.file.LinkOption 0))))
+      (is (empty? (filter #(re-find #"^\\.tokenizer-" (str (.getFileName %)))
+                          (iterator-seq (.iterator (Files/list target-dir))))))
+      (finally
+        (.stop server 0)))))
+
+(deftest hub-download-verifies-supplied-sha256-and-persists-metadata
+  (let [download-tokenizer! (resolve 'tokenizers.core/download-tokenizer!)
+        server (HttpServer/create (InetSocketAddress. 0) 0)
+        target-dir (Files/createTempDirectory "tokenizers-clj-checksum"
+                                              (make-array FileAttribute 0))
+        target (.resolve target-dir "tokenizer.json")
+        body (.getBytes "checksum body" "UTF-8")
+        digest (MessageDigest/getInstance "SHA-256")
+        checksum (format "%064x" (BigInteger. 1 (.digest digest body)))]
+    (is download-tokenizer!)
+    (.createContext
+     server "/tokenizer.json"
+     (reify HttpHandler
+       (handle [_ exchange]
+         (.add (.getResponseHeaders exchange) "X-Linked-ETag" (str "\"" checksum "\""))
+         (.sendResponseHeaders exchange 200 (alength body))
+         (with-open [out (.getResponseBody exchange)]
+           (.write out body)))))
+    (.start server)
+    (try
+      (download-tokenizer!
+       (URI/create (str "http://127.0.0.1:" (.getPort (.getAddress server))
+                        "/tokenizer.json"))
+       target nil)
+      (is (= checksum (str/trim (slurp (str target ".sha256")))))
+      (finally
+        (.stop server 0)))))
+
+(deftest concurrent-hub-loads-download-an-entry-once
+  (let [hub-uri-fn (resolve 'tokenizers.core/hub-uri)
+        download-fn (resolve 'tokenizers.core/download-tokenizer!)
+        cache (Files/createTempDirectory "tokenizers-clj-concurrent"
+                                         (make-array FileAttribute 0))
+        downloads (atom 0)]
+    (is hub-uri-fn)
+    (is download-fn)
+    (when (and hub-uri-fn download-fn)
+      (with-redefs-fn
+       {hub-uri-fn (fn
+                    ([_ _] (URI/create "https://example.test/tokenizer.json"))
+                    ([_ _ filename] (URI/create (str "https://example.test/" filename))))
+        download-fn (fn [uri target _ _]
+                      (when (= "tokenizer.json" (last (str/split (str uri) #"/")))
+                        (swap! downloads inc)
+                        (Thread/sleep 100))
+                      (Files/createDirectories (.getParent target)
+                                               (make-array FileAttribute 0))
+                      (Files/copy (.toPath fixture) target
+                                  (into-array java.nio.file.CopyOption
+                                              [StandardCopyOption/REPLACE_EXISTING]))) }
+       (fn []
+         (let [opts {:revision "abc123" :cache-dir cache :add-special-tokens? false}
+               first-load (future (with-open [t (tok/from-pretrained "acme/model" opts)]
+                                    (tok/ids t "hello")))
+               second-load (future (with-open [t (tok/from-pretrained "acme/model" opts)]
+                                     (tok/ids t "hello")))]
+           (is (= [7592] @first-load))
+           (is (= [7592] @second-load))
+           (is (= 1 @downloads))))))))
 
 (deftest native-runtime-preflight-explains-macos-x86-jvm
   (let [check (resolve 'tokenizers.core/assert-compatible-native-runtime!)]

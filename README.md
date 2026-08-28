@@ -83,10 +83,15 @@ Leiningen / Boot:
   behavior flags.
 - `:tokenizer-config`: path, `File`, or `Path` to a `tokenizer_config.json`.
 
-`from-pretrained` also accepts `:revision`, `:auth-token`, `:cache-dir`, and
-`:local-only?` / `:offline?`. If you supply a revision, cache, or offline option,
-the library uses a revision-specific local cache. In an offline mode the library
-fails without a network request when the tokenizer is absent.
+`from-pretrained` also accepts `:revision`, `:auth-token`, `:cache-dir`,
+`:local-only?` / `:offline?`, `:download-timeout-ms`, and
+`:max-download-bytes` (100 MiB by default). If you supply a revision, cache, or
+offline option, the library uses a revision-specific local cache. Downloads are
+streamed into temporary files, verified against a Hub SHA-256 checksum when one
+is supplied, and atomically moved into place. A cache lock prevents concurrent
+JVMs from observing a partial entry. In an offline mode the library fails
+without a network request when the tokenizer is absent; legacy cache entries
+without checksum metadata remain valid.
 
 Hub loading also downloads `tokenizer_config.json` when available and passes it
 to DJL. Its `model_max_length` is reflected by `max-length`,
