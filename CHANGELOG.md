@@ -4,6 +4,8 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-08-30
+
 ### Changed
 
 - **BREAKING:** Encode offsets and span lookups now use UTF-16 indexes into the
