@@ -3,7 +3,11 @@
   Rust `tokenizers` library via JNI. Build a tokenizer with `from-file` /
   `from-pretrained` / `from-stream`, then `encode`, `decode`, or `count-tokens`.
 
-  A tokenizer holds a native handle: close it (`with-open` works) to free it."
+  A tokenizer holds a native handle: close it (`with-open` works) to free it.
+  Concurrent wrapper operations, including concurrent `encode`, are not
+  guaranteed by DJL 0.36.0. Never close a tokenizer while any operation is in
+  flight; `close` can free the native handle during JNI execution, causing a
+  native crash rather than a catchable Clojure or Java exception."
   (:require [clojure.string :as str])
   (:import [ai.djl.huggingface.tokenizers HuggingFaceTokenizer
             HuggingFaceTokenizer$Builder Encoding TokenizerConfig]
@@ -154,7 +158,8 @@
   "Tokenizer from a `tokenizer.json` (path string, `File`, or `Path`).
   Constructor options include `:truncation`, `:max-length`, `:stride`, `:padding`,
   `:pad-to-multiple-of`, `:add-special-tokens?`, `:lowercase?`, and
-  `:tokenizer-config`. See `builder` for raw options and `:manager`."
+  `:tokenizer-config`. See `builder` for raw options and `:manager`. The returned
+  tokenizer is closeable; do not close it while an operation is in flight."
   (^HuggingFaceTokenizer [path]
    (from-file path {}))
   (^HuggingFaceTokenizer [path opts]
@@ -192,6 +197,26 @@
 (def ^:private default-hub-download-timeout-ms 30000)
 (def ^:private default-hub-max-download-bytes (* 100 1024 1024))
 (defonce ^:private hub-cache-locks (atom {}))
+
+(defn- acquire-hub-cache-lock! [key]
+  (let [locks (swap! hub-cache-locks
+                     (fn [locks]
+                       (if-let [{:keys [lock references]} (get locks key)]
+                         (assoc locks key {:lock lock
+                                           :references (inc references)})
+                         (assoc locks key {:lock (Object.) :references 1}))))]
+    (get locks key)))
+
+(defn- release-hub-cache-lock! [key lock-object]
+  (swap! hub-cache-locks
+         (fn [locks]
+           (if-let [{:keys [lock references] :as entry} (get locks key)]
+             (if (identical? lock lock-object)
+               (if (= 1 references)
+                 (dissoc locks key)
+                 (assoc locks key (assoc entry :references (dec references))))
+               locks)
+             locks))))
 
 (defn- hub-download-timeout [timeout-ms]
   (let [timeout-ms (or timeout-ms default-hub-download-timeout-ms)]
@@ -299,17 +324,18 @@
   (let [lock-path (.resolveSibling target (str (.getFileName target) ".lock"))]
     (Files/createDirectories (.getParent lock-path) (make-array FileAttribute 0))
     (let [key (str lock-path)
-          lock-object (get (swap! hub-cache-locks
-                                  #(if (contains? % key) %
-                                       (assoc % key (Object.)))) key)]
-      (locking lock-object
-      (with-open [channel (FileChannel/open lock-path
-                                            (into-array StandardOpenOption
-                                                        [StandardOpenOption/CREATE
-                                                         StandardOpenOption/WRITE]))
-                  _lock (.lock channel)]
-        (remove-stale-downloads! (.getParent target))
-        (f))))))
+          {:keys [lock]} (acquire-hub-cache-lock! key)]
+      (try
+        (locking lock
+          (with-open [channel (FileChannel/open lock-path
+                                                (into-array StandardOpenOption
+                                                            [StandardOpenOption/CREATE
+                                                             StandardOpenOption/WRITE]))
+                      _lock (.lock channel)]
+            (remove-stale-downloads! (.getParent target))
+            (f)))
+        (finally
+          (release-hub-cache-lock! key lock))))))
 
 (defn- write-checksum! [^Path target checksum]
   (when checksum
@@ -400,7 +426,8 @@
   `tokenizer_config.json`; DJL applies the latter's model and special-token
   metadata during construction.
   Wrapper-managed Hub downloads use a 30,000 ms connect and read timeout by
-  default; `:download-timeout-ms` must be a positive integer."
+  default; `:download-timeout-ms` must be a positive integer. The returned
+  tokenizer is closeable; do not close it while an operation is in flight."
   (^HuggingFaceTokenizer [^String id]
    (from-pretrained id {}))
   (^HuggingFaceTokenizer [^String id opts]
@@ -458,7 +485,9 @@
        (.build builder)))))
 
 (defn from-stream
-  "Tokenizer from an `InputStream` over a `tokenizer.json`, with constructor opts."
+  "Tokenizer from an `InputStream` over a `tokenizer.json`, with constructor opts.
+  The returned tokenizer is closeable; do not close it while an operation is in
+  flight."
   (^HuggingFaceTokenizer [^InputStream is]
    (from-stream is {}))
   (^HuggingFaceTokenizer [^InputStream is opts]
@@ -471,7 +500,8 @@
 (defn from-bpe-files
   "BPE tokenizer from separate `vocab.json` and `merges.txt` paths.
   Accepts the constructor options documented by `from-file`, including raw
-  `:options` / `:raw-options`."
+  `:options` / `:raw-options`. The returned tokenizer is closeable; do not close
+  it while an operation is in flight."
   (^HuggingFaceTokenizer [vocab-path merges-path]
    (from-bpe-files vocab-path merges-path {}))
   (^HuggingFaceTokenizer [vocab-path merges-path opts]
@@ -551,6 +581,9 @@
    :overflow (mapv #(enc->map % source-texts) (.getOverflowing e))
    :exceed-max-length? (.exceedMaxLength e)}))
 
+;; DJL 0.36.0's private toEncoding deletes its native Encoding only after all
+;; JNI getters and recursive overflow conversion succeed. An exception there
+;; leaks that native allocation upstream; the wrapper never receives the handle.
 (defn- raw-encode
   (^Encoding [^HuggingFaceTokenizer t ^String text]
    (.encode t text))

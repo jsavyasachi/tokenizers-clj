@@ -686,6 +686,30 @@
            (is (= [7592] @second-load))
            (is (= 1 @downloads))))))))
 
+(deftest hub-cache-lock-registry-releases-idle-entries
+  (let [with-lock (resolve 'tokenizers.core/with-hub-cache-lock)
+        acquire-lock (resolve 'tokenizers.core/acquire-hub-cache-lock!)
+        release-lock (resolve 'tokenizers.core/release-hub-cache-lock!)
+        locks-var (resolve 'tokenizers.core/hub-cache-locks)
+        locks @locks-var
+        root (Files/createTempDirectory "tokenizers-clj-locks"
+                                        (make-array FileAttribute 0))]
+    (reset! locks {})
+    (try
+      (doseq [index (range 20)]
+        (with-lock (.resolve root (str "model-" index ".json"))
+          (fn [] nil)))
+      (is (empty? @locks))
+      (let [first-entry (acquire-lock "shared")
+            second-entry (acquire-lock "shared")]
+        (is (identical? (:lock first-entry) (:lock second-entry)))
+        (release-lock "shared" (:lock first-entry))
+        (is (= 1 (count @locks)))
+        (release-lock "shared" (:lock second-entry)))
+      (is (empty? @locks))
+      (finally
+        (reset! locks {})))))
+
 (deftest native-runtime-preflight-explains-macos-x86-jvm
   (let [check (resolve 'tokenizers.core/assert-compatible-native-runtime!)]
     (is check)

@@ -14,6 +14,16 @@ All notable changes to this project are documented here. Format follows [Keep a 
 - Hub downloads no longer forward bearer tokens across redirect origins and
   now enforce a bounded, manually-followed redirect chain.
 
+### Fixed
+
+- Hub cache lock entries are released after use without evicting an entry that
+  another thread can still acquire or hold.
+
+### Documentation
+
+- Documented tokenizer lifecycle requirements and the upstream DJL 0.36.0
+  exception-path native `Encoding` leak.
+
 ## [0.10.0] - 2026-08-28
 
 ### Added

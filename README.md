@@ -225,6 +225,19 @@ so the model should receive the mask rather than treating padding as content:
   (.forward block inputs))
 ```
 
+## Known issues and lifecycle
+
+Returned `HuggingFaceTokenizer` instances are closeable and can be used with
+`with-open`. DJL 0.36.0 does not establish a concurrent-encode contract, so
+concurrent operations on one tokenizer are not guaranteed. Never call `.close`
+while any operation is in flight: DJL can delete the native handle during JNI
+execution, causing a native crash rather than a catchable exception.
+
+DJL 0.36.0 also has an upstream exception-path defect in its private
+`toEncoding` conversion. If a JNI getter or recursive overflow conversion
+throws, the native `Encoding` allocation is leaked. The wrapper cannot recover
+that handle because DJL does not expose it.
+
 ## Requirements
 
 - JDK 17 or newer
