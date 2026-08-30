@@ -504,6 +504,98 @@
       (finally
         (.stop server 0)))))
 
+(deftest hub-redirects-strip-auth-across-origins-and-preserve-it-within-origin
+  (let [download-tokenizer! (resolve 'tokenizers.core/download-tokenizer!)
+        body (Files/readAllBytes (.toPath fixture))
+        target-auth (atom ::unset)
+        target (HttpServer/create (InetSocketAddress. 0) 0)
+        source (HttpServer/create (InetSocketAddress. 0) 0)
+        target-dir (Files/createTempDirectory "tokenizers-clj-redirect"
+                                              (make-array FileAttribute 0))
+        target-file (.resolve target-dir "tokenizer.json")]
+    (is download-tokenizer!)
+    (.createContext
+     target "/final"
+     (reify HttpHandler
+       (handle [_ exchange]
+         (reset! target-auth (.getFirst (.getRequestHeaders exchange) "Authorization"))
+         (.sendResponseHeaders exchange 200 (alength body))
+         (with-open [out (.getResponseBody exchange)]
+           (.write out body)))))
+    (.createContext
+     source "/cross"
+     (reify HttpHandler
+       (handle [_ exchange]
+         (.getResponseHeaders exchange)
+         (.add (.getResponseHeaders exchange) "Location"
+               (str "http://127.0.0.1:" (.getPort (.getAddress target)) "/final"))
+         (.sendResponseHeaders exchange 302 -1)
+         (.close exchange))))
+    (.createContext
+     source "/same"
+     (reify HttpHandler
+       (handle [_ exchange]
+         (.add (.getResponseHeaders exchange) "Location" "/same-final")
+         (.sendResponseHeaders exchange 302 -1)
+         (.close exchange))))
+    (.createContext
+     source "/same-final"
+     (reify HttpHandler
+       (handle [_ exchange]
+         (reset! target-auth (.getFirst (.getRequestHeaders exchange) "Authorization"))
+         (.sendResponseHeaders exchange 200 (alength body))
+         (with-open [out (.getResponseBody exchange)]
+           (.write out body)))))
+    (.start target)
+    (.start source)
+    (try
+      (when download-tokenizer!
+        (download-tokenizer!
+         (URI/create (str "http://127.0.0.1:" (.getPort (.getAddress source)) "/cross"))
+         target-file "hf_secret")
+        (is (nil? @target-auth))
+        (Files/deleteIfExists target-file)
+        (download-tokenizer!
+         (URI/create (str "http://127.0.0.1:" (.getPort (.getAddress source)) "/same"))
+         target-file "hf_secret")
+        (is (= "Bearer hf_secret" @target-auth)))
+      (finally
+        (.stop source 0)
+        (.stop target 0)))))
+
+(deftest hub-redirects-normalize-default-ports-and-cap-the-chain
+  (let [same-origin? (resolve 'tokenizers.core/same-origin?)
+        hub-response (resolve 'tokenizers.core/hub-response)
+        hub-http-client (resolve 'tokenizers.core/hub-http-client)
+        server (HttpServer/create (InetSocketAddress. 0) 0)
+        timeout (Duration/ofSeconds 5)]
+    (is same-origin?)
+    (is hub-response)
+    (when (and same-origin? hub-response hub-http-client)
+      (is (true? (same-origin? (URI/create "http://example.test")
+                               (URI/create "http://example.test:80"))))
+      (is (false? (same-origin? (URI/create "https://example.test")
+                                (URI/create "http://example.test:443")))))
+    (.createContext
+     server "/loop"
+     (reify HttpHandler
+       (handle [_ exchange]
+         (.add (.getResponseHeaders exchange) "Location" "/loop")
+         (.sendResponseHeaders exchange 302 -1)
+         (.close exchange))))
+    (.start server)
+    (try
+      (when (and hub-response hub-http-client)
+        (is (thrown-with-msg?
+             clojure.lang.ExceptionInfo
+             #"Too many redirects"
+             (hub-response (hub-http-client timeout)
+                           (URI/create (str "http://127.0.0.1:"
+                                            (.getPort (.getAddress server)) "/loop"))
+                           nil timeout))))
+      (finally
+        (.stop server 0)))))
+
 (deftest hub-download-enforces-maximum-size-and-cleans-temp-files
   (let [download-tokenizer! (resolve 'tokenizers.core/download-tokenizer!)
         server (HttpServer/create (InetSocketAddress. 0) 0)

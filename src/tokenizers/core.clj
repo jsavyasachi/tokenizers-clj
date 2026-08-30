@@ -203,7 +203,7 @@
 (defn- hub-http-client [^Duration timeout]
   (-> (HttpClient/newBuilder)
       (.connectTimeout timeout)
-      (.followRedirects HttpClient$Redirect/ALWAYS)
+      (.followRedirects HttpClient$Redirect/NEVER)
       (.build)))
 
 (defn- hub-request [uri auth-token ^Duration timeout]
@@ -213,6 +213,47 @@
     (when auth-token
       (.header request-builder "Authorization" (str "Bearer " auth-token)))
     (.build request-builder)))
+
+(def ^:private hub-redirect-statuses #{301 302 303 307 308})
+(def ^:private hub-max-redirects 5)
+
+(defn- effective-port [^URI uri]
+  (let [port (.getPort uri)]
+    (if (pos? port)
+      port
+      (case (.getScheme uri) "https" 443 "http" 80 -1))))
+
+(defn- same-origin? [^URI a ^URI b]
+  (and (= (.getScheme a) (.getScheme b))
+       (= (.getHost a) (.getHost b))
+       (= (effective-port a) (effective-port b))))
+
+(defn- redirect-location [^URI current response]
+  (let [location (.firstValue (.headers response) "location")]
+    (if (.isPresent location)
+      (.resolve current ^String (.get location))
+      (throw (ex-info (str "Redirect response missing Location header: " current)
+                      {:uri (str current)})))))
+
+(defn- hub-response [^HttpClient client ^URI uri auth-token ^Duration timeout]
+  (loop [current-uri uri
+         current-token auth-token
+         redirects 0]
+    (let [response (.send client (hub-request current-uri current-token timeout)
+                          (HttpResponse$BodyHandlers/ofInputStream))
+          status (.statusCode response)]
+      (if-not (contains? hub-redirect-statuses status)
+        response
+        (do
+          (when (>= redirects hub-max-redirects)
+            (.close (.body response))
+            (throw (ex-info (str "Too many redirects (> " hub-max-redirects ") for " uri)
+                            {:uri (str uri)})))
+          (let [target (redirect-location current-uri response)
+                next-token (when (same-origin? current-uri target)
+                             current-token)]
+            (.close (.body response))
+            (recur target next-token (inc redirects))))))))
 
 (defn- hub-max-download-bytes [max-bytes]
   (let [max-bytes (or max-bytes default-hub-max-download-bytes)]
@@ -302,8 +343,7 @@
     (remove-stale-downloads! (.getParent target))
     (let [timeout (hub-download-timeout timeout-ms)
         client (hub-http-client timeout)
-        response (.send client (hub-request uri auth-token timeout)
-                        (HttpResponse$BodyHandlers/ofInputStream))
+        response (hub-response client uri auth-token timeout)
         status (.statusCode response)]
       (when-not (<= 200 status 299)
         (throw (ex-info (str "HuggingFace Hub returned HTTP " status " for " uri)

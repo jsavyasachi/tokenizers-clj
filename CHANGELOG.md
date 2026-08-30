@@ -9,6 +9,11 @@ All notable changes to this project are documented here. Format follows [Keep a 
 - **BREAKING:** Encode offsets and span lookups now use UTF-16 indexes into the
   original source strings, suitable for direct use with `subs`.
 
+### Security
+
+- Hub downloads no longer forward bearer tokens across redirect origins and
+  now enforce a bounded, manually-followed redirect chain.
+
 ## [0.10.0] - 2026-08-28
 
 ### Added
