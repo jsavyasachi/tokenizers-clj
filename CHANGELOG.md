@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING:** Encode offsets and span lookups now use UTF-16 indexes into the
+  original source strings, suitable for direct use with `subs`.
+
 ## [0.10.0] - 2026-08-28
 
 ### Added

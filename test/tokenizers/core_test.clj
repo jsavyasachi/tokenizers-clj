@@ -73,6 +73,41 @@
       (is (= [] (:overflow enc)))
       (is (false? (:exceed-max-length? enc))))))
 
+(deftest encode-offsets-are-utf16-indexes
+  (with-open [t (tok/from-file fixture)]
+    (doseq [[text expected] [["café" ["café"]]
+                             ["中" ["中"]]
+                             ["😀" ["😀"]]
+                             ["😀a" ["😀a"]]
+                             ["a😀b" ["a😀b"]]
+                             ["café 中 😀 z" ["café" "中" "😀" "z"]]]]
+      (testing (pr-str text)
+        (let [enc (tok/encode t text {:add-special-tokens? false})
+              spans (keep (fn [[token span]]
+                            (when span
+                              [token (apply subs text span)]))
+                          (map vector (:tokens enc) (:offsets enc)))]
+          (is (= expected (mapv second spans))))))))
+
+(deftest paired-and-batch-encode-offsets-use-each-source-string
+  (with-open [t (tok/from-file fixture)]
+    (let [pair (tok/encode t "😀a" "b😀c" {:add-special-tokens? false})
+          pair-spans (keep (fn [[token span sequence-id]]
+                             (when (and span (some? sequence-id))
+                               [sequence-id token span]))
+                           (map vector (:tokens pair) (:offsets pair)
+                                (:sequence-ids pair)))]
+      (is (= [[0 "[UNK]" "😀a"] [1 "[UNK]" "b😀c"]]
+             (mapv (fn [[sequence-id token span]]
+                     [sequence-id token (apply subs (if (= 0 sequence-id) "😀a" "b😀c") span)])
+                   pair-spans))))
+    (let [texts ["😀a" "a😀b"]
+          encs (tok/batch-encode t texts {:add-special-tokens? false})]
+      (is (= [["😀a"] ["a😀b"]]
+             (mapv (fn [text enc]
+                     (mapv #(apply subs text %) (keep identity (:offsets enc))))
+                   texts encs))))))
+
 (deftest count-tokens-and-special-tokens-toggle
   (with-open [t (tok/from-file fixture)]
     (is (= 6 (tok/count-tokens t "Hello, world!")))
@@ -631,3 +666,14 @@
           (is (= [5] (word->tokens enc 1)))
           (is (= [] (word->tokens enc -1)))
           (is (= [] (word->tokens enc 2))))))))
+
+(deftest encoded-span-lookups-use-utf16-indexes
+  (with-open [t (tok/from-file fixture)]
+    (let [enc (tok/encode t "a 😀 b" {:add-special-tokens? false})]
+      (is (= [0 1] (tok/token->chars enc 0)))
+      (is (= [2 4] (tok/token->chars enc 1)))
+      (is (= [5 6] (tok/token->chars enc 2)))
+      (is (= 0 (tok/char->token enc 0)))
+      (is (= 1 (tok/char->token enc 2)))
+      (is (= 1 (tok/char->token enc 3)))
+      (is (= 2 (tok/char->token enc 5))))))

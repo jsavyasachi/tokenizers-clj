@@ -481,17 +481,35 @@
   (when span
     [(.getStart span) (.getEnd span)]))
 
-(defn- enc->map [^Encoding e]
+(defn- code-point-index [^String text]
+  (loop [code-point 0
+         utf16-index 0
+         indexes []]
+    (if (< code-point (.codePointCount text 0 (.length text)))
+      (recur (inc code-point)
+             (+ utf16-index (Character/charCount (.codePointAt text utf16-index)))
+             (conj indexes utf16-index))
+      (conj indexes utf16-index))))
+
+(defn- enc->map [^Encoding e source-texts]
+  (let [sequence-ids (vec (.getSequenceIds e))
+        indexes (mapv #(when % (code-point-index %)) source-texts)
+        offsets (mapv (fn [idx span]
+                        (when-let [[start end] (span->offset span)]
+                          (let [index (get indexes (get sequence-ids idx))]
+                            [(get index start) (get index end)])))
+                      (range (count sequence-ids))
+                      (.getCharTokenSpans e))]
   {:ids (vec (.getIds e))
    :tokens (vec (.getTokens e))
    :type-ids (vec (.getTypeIds e))
    :word-ids (vec (.getWordIds e))
    :attention-mask (vec (.getAttentionMask e))
    :special-tokens-mask (vec (.getSpecialTokenMask e))
-   :offsets (mapv span->offset (.getCharTokenSpans e))
-   :sequence-ids (vec (.getSequenceIds e))
-   :overflow (mapv enc->map (.getOverflowing e))
-   :exceed-max-length? (.exceedMaxLength e)})
+   :offsets offsets
+   :sequence-ids sequence-ids
+   :overflow (mapv #(enc->map % source-texts) (.getOverflowing e))
+   :exceed-max-length? (.exceedMaxLength e)}))
 
 (defn- raw-encode
   (^Encoding [^HuggingFaceTokenizer t ^String text]
@@ -511,14 +529,17 @@
 
 (defn encode
   "Encode `text`, optionally paired with a second text, into a token-data map.
+  `:offsets` are UTF-16 indexes into the original source string(s), so they can
+  be passed directly to `subs`.
   Opts: `:add-special-tokens?` (default true), `:with-overflowing-tokens?`
   (default false)."
   ([t text]
-   (enc->map (raw-encode t text)))
+   (enc->map (raw-encode t text) [text]))
   ([t text pair-or-opts]
-   (enc->map (raw-encode t text pair-or-opts)))
+   (enc->map (raw-encode t text pair-or-opts)
+             [text (when (string? pair-or-opts) pair-or-opts)]))
   ([t text text-pair opts]
-   (enc->map (raw-encode t text text-pair opts))))
+   (enc->map (raw-encode t text text-pair opts) [text text-pair])))
 
 (defn- validate-token-budget [token-budget]
   (when-not (and (integer? token-budget) (pos? token-budget))
@@ -569,8 +590,7 @@
   (let [indices (mapv :idx records)
         offsets (mapv (fn [idx]
                         (when-let [[start end] (get (:offsets enc) idx)]
-                          [(.offsetByCodePoints ^String text 0 (int start))
-                           (.offsetByCodePoints ^String text 0 (int end))]))
+                          [start end]))
                       indices)
         present-offsets (keep identity offsets)
         offset (when (seq present-offsets)
@@ -593,7 +613,8 @@
 (defn split-by-token-budget
   "Split `text` into native-token windows of at most `token-budget` tokens.
 
-  Returns encode-shaped maps with `:text`, `:offset` (Java character indexes),
+  Returns encode-shaped maps with `:text`, `:offset` (UTF-16 indexes into the
+  original string, usable directly with `subs`),
   `:ids`, and overflow metadata. Special tokens count against the budget by
   default. Set `:count-special-tokens?` to false to exclude them while keeping
   tokenizer-added prefix/suffix specials in the first/last window. Other opts
@@ -632,7 +653,8 @@
 (def truncate-by-tokens truncate-by-token-budget)
 
 (defn token->chars
-  "Character span for `token-idx` in an `encode` result map, or nil."
+  "UTF-16 character span for `token-idx`, usable directly with `subs`, in an
+  `encode` result map, or nil."
   [enc token-idx]
   (get (:offsets enc) token-idx))
 
@@ -644,7 +666,8 @@
       word-id)))
 
 (defn char->token
-  "Token index containing `char-idx` in an `encode` result map, or nil."
+  "Token index containing UTF-16 character index `char-idx` in an `encode`
+  result map, or nil."
   [enc char-idx]
   (first
    (keep-indexed
@@ -670,13 +693,14 @@
   Opts: `:add-special-tokens?` (default true), `:with-overflowing-tokens?`
   (default false)."
   ([^HuggingFaceTokenizer t words]
-   (enc->map (.encode t ^java.util.List (vec words))))
+   (enc->map (.encode t ^java.util.List (vec words)) [(str/join "" words)]))
   ([^HuggingFaceTokenizer t words
     {:keys [add-special-tokens? with-overflowing-tokens?]
      :or {add-special-tokens? true with-overflowing-tokens? false}}]
    (enc->map (.encode t ^java.util.List (vec words)
                       (boolean add-special-tokens?)
-                      (boolean with-overflowing-tokens?)))))
+                      (boolean with-overflowing-tokens?))
+             [(str/join "" words)])))
 
 (defn batch-encode-pretokenized
   "Encode batches of already-split word strings while preserving native word ids.
@@ -752,13 +776,15 @@
   "Encode many `texts` at once, returning a vector of `encode`-shaped maps.
   Accepts the same options as `encode`."
   ([^HuggingFaceTokenizer t texts]
-   (mapv enc->map (.batchEncode t ^java.util.List (vec texts))))
+   (mapv (fn [encoding text] (enc->map encoding [text]))
+         (.batchEncode t ^java.util.List (vec texts)) texts))
   ([^HuggingFaceTokenizer t texts
     {:keys [add-special-tokens? with-overflowing-tokens?]
      :or {add-special-tokens? true with-overflowing-tokens? false}}]
-   (mapv enc->map (.batchEncode t ^java.util.List (vec texts)
-                               (boolean add-special-tokens?)
-                               (boolean with-overflowing-tokens?)))))
+   (mapv (fn [encoding text] (enc->map encoding [text]))
+         (.batchEncode t ^java.util.List (vec texts)
+                       (boolean add-special-tokens?)
+                       (boolean with-overflowing-tokens?)) texts)))
 
 (defn batch-count-tokens
   "Token-id counts for `texts` via native batch encoding."
@@ -835,12 +861,17 @@
     pair-list))
 
 (defn batch-encode-pairs
-  "Encode `[text text-pair]` pairs, returning encode-shaped maps."
+  "Encode `[text text-pair]` pairs, returning encode-shaped maps with UTF-16
+  offsets relative to each pair member's original string."
   ([^HuggingFaceTokenizer t pairs]
-   (mapv enc->map (.batchEncode t ^PairList (->pair-list pairs))))
+   (mapv (fn [encoding [text text-pair]]
+           (enc->map encoding [text text-pair]))
+         (.batchEncode t ^PairList (->pair-list pairs)) pairs))
   ([^HuggingFaceTokenizer t pairs
     {:keys [add-special-tokens? with-overflowing-tokens?]
      :or {add-special-tokens? true with-overflowing-tokens? false}}]
-   (mapv enc->map (.batchEncode t ^PairList (->pair-list pairs)
-                               (boolean add-special-tokens?)
-                               (boolean with-overflowing-tokens?)))))
+   (mapv (fn [encoding [text text-pair]]
+           (enc->map encoding [text text-pair]))
+         (.batchEncode t ^PairList (->pair-list pairs)
+                       (boolean add-special-tokens?)
+                       (boolean with-overflowing-tokens?)) pairs)))
