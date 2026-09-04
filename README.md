@@ -2,7 +2,7 @@
 
 [![Clojars Project](https://img.shields.io/clojars/v/net.clojars.savya/tokenizers-clj.svg)](https://clojars.org/net.clojars.savya/tokenizers-clj)
 [![cljdoc](https://cljdoc.org/badge/net.clojars.savya/tokenizers-clj)](https://cljdoc.org/d/net.clojars.savya/tokenizers-clj)
-[![test](https://github.com/jsavyasachi/tokenizers-clj/actions/workflows/test.yml/badge.svg)](https://github.com/jsavyasachi/tokenizers-clj/actions/workflows/test.yml)
+[![test](https://github.com/savyalabs/tokenizers-clj/actions/workflows/test.yml/badge.svg)](https://github.com/savyalabs/tokenizers-clj/actions/workflows/test.yml)
 
 Idiomatic Clojure tokenization: tokenize, encode, decode, and count tokens against any
 HuggingFace `tokenizer.json`, backed by the native Rust `tokenizers` library.

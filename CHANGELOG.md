@@ -141,6 +141,6 @@ All notable changes to this project are documented here. Format follows [Keep a 
 - `ids`, `tokens`, `count-tokens`, `decode`, and `batch-encode` helpers.
 - Tokenizers are `Closeable`, so `with-open` frees the native handle.
 
-[0.2.0]: https://github.com/jsavyasachi/tokenizers-clj/releases/tag/v0.2.0
-[0.1.2]: https://github.com/jsavyasachi/tokenizers-clj/releases/tag/v0.1.2
-[0.1.0]: https://github.com/jsavyasachi/tokenizers-clj/releases/tag/0.1.0
+[0.2.0]: https://github.com/savyalabs/tokenizers-clj/releases/tag/v0.2.0
+[0.1.2]: https://github.com/savyalabs/tokenizers-clj/releases/tag/v0.1.2
+[0.1.0]: https://github.com/savyalabs/tokenizers-clj/releases/tag/0.1.0

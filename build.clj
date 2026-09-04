@@ -24,12 +24,12 @@
                 :version version
                 :basis @basis
                 :src-dirs ["src"]
-                :scm {:url "https://github.com/jsavyasachi/tokenizers-clj"
-                      :connection "scm:git:https://github.com/jsavyasachi/tokenizers-clj.git"
-                      :developerConnection "scm:git:ssh://git@github.com/jsavyasachi/tokenizers-clj.git"
+                :scm {:url "https://github.com/savyalabs/tokenizers-clj"
+                      :connection "scm:git:https://github.com/savyalabs/tokenizers-clj.git"
+                      :developerConnection "scm:git:ssh://git@github.com/savyalabs/tokenizers-clj.git"
                       :tag (str "v" version)}
                 :pom-data [[:description "Idiomatic Clojure wrapper over DJL's HuggingFace tokenizers (native Rust tokenizers via JNI): encode, decode, and count tokens."]
-                           [:url "https://github.com/jsavyasachi/tokenizers-clj"]
+                           [:url "https://github.com/savyalabs/tokenizers-clj"]
                            [:licenses
                             [:license
                              [:name "Eclipse Public License 2.0"]
