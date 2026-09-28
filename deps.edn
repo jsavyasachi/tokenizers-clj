@@ -1,13 +1,13 @@
 {:paths ["src"]
 
  :deps {org.clojure/clojure {:mvn/version "1.12.0"}
-        ai.djl.huggingface/tokenizers {:mvn/version "0.36.0"}}
+        ai.djl.huggingface/tokenizers {:mvn/version "0.38.0"}}
 
  :aliases
  {:test
   {:extra-paths ["test" "test/resources"]
    :extra-deps {lambdaisland/kaocha {:mvn/version "1.91.1392"}
-                org.slf4j/slf4j-nop {:mvn/version "2.0.18"}}
+                org.slf4j/slf4j-nop {:mvn/version "2.0.20"}}
    :main-opts ["-m" "kaocha.runner"]}
 
   :1.10 {:override-deps {org.clojure/clojure {:mvn/version "1.10.3"}}}
