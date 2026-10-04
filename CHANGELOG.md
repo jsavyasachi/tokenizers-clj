@@ -4,6 +4,12 @@ All notable changes to this project are documented here. Format follows [Keep a 
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-10-04
+
+### Changed
+
+- Bump `ai.djl.huggingface/tokenizers` to 0.38.0. The DJL public API is unchanged from 0.36.0.
+
 ## [0.11.0] - 2026-08-30
 
 ### Changed
